@@ -29,7 +29,12 @@ CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 
 # OpenAI 設定
-openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+openai_client = None
+if OPENAI_API_KEY:
+    openai_client = OpenAI(api_key=OPENAI_API_KEY)
+else:
+    logger.warning("OPENAI_API_KEY not set, AI responses will not work")
 
 # LINE SDK 設定
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
@@ -251,6 +256,8 @@ def reset_session(user_id):
 
 # ===== AI 聊天函數 =====
 def chat_with_ai(user_text, history):
+    if openai_client is None:
+        return "不好意思⋯我剛剛恃神了一下 🤣\n等我一下再跟你聊 ✨"
     try:
         messages = [{"role": "system", "content": SYSTEM_PROMPT}]
         for h in history[-20:]:
