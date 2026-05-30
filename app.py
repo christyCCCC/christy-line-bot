@@ -356,6 +356,47 @@ KEYWORD_RESPONSES = {
     "音樂": "唱歌就是療癒又舒壓\n尤其是自彈自唱的時候⋯\n\n我有寫過幾首歌\n《幸運的遇見》和《酒醒以後》\n都是我的詞曲創作\n\n你也喜歡音樂嗎？",
 }
 
+# ===== 熊大貼圖庫（LINE 官方免費貼圖）=====
+# Package 6362: 熊大＆兔兔（迷你篇）- Brown and Cony Fun Size Pack (zh_TW)
+BROWN_STICKERS = [
+    {"package_id": "6362", "sticker_id": "11087920"},
+    {"package_id": "6362", "sticker_id": "11087921"},
+    {"package_id": "6362", "sticker_id": "11087922"},
+    {"package_id": "6362", "sticker_id": "11087923"},
+    {"package_id": "6362", "sticker_id": "11087924"},
+    {"package_id": "6362", "sticker_id": "11087925"},
+    {"package_id": "6362", "sticker_id": "11087926"},
+    # Package 11537: Brown & Cony & Sally Animated Special
+    {"package_id": "11537", "sticker_id": "52002734"},
+    {"package_id": "11537", "sticker_id": "52002735"},
+    {"package_id": "11537", "sticker_id": "52002736"},
+    {"package_id": "11537", "sticker_id": "52002737"},
+    {"package_id": "11537", "sticker_id": "52002738"},
+    {"package_id": "11537", "sticker_id": "52002739"},
+    {"package_id": "11537", "sticker_id": "52002740"},
+    {"package_id": "11537", "sticker_id": "52002741"},
+    # Package 6325: Brown and Cony Fun Size Pack
+    {"package_id": "6325", "sticker_id": "10979904"},
+    {"package_id": "6325", "sticker_id": "10979905"},
+    {"package_id": "6325", "sticker_id": "10979906"},
+    {"package_id": "6325", "sticker_id": "10979907"},
+    {"package_id": "6325", "sticker_id": "10979908"},
+    {"package_id": "6325", "sticker_id": "10979909"},
+    {"package_id": "6325", "sticker_id": "10979910"},
+]
+
+
+def should_send_sticker():
+    """約 30% 機率附帶貼圖"""
+    return random.random() < 0.3
+
+
+def get_random_sticker():
+    """隨機選一個熊大貼圖"""
+    sticker = random.choice(BROWN_STICKERS)
+    return StickerMessage(package_id=sticker["package_id"], sticker_id=sticker["sticker_id"])
+
+
 # ===== 用戶狀態管理 =====
 user_sessions = {}
 
@@ -468,10 +509,15 @@ def handle_message(event):
             session["history"] = session["history"][-20:]
 
         # 直接用 reply message 回覆（最穩定）
+        # 約 30% 機率附帶一個熊大貼圖
+        messages_to_send = [TextMessage(text=ai_response)]
+        if should_send_sticker():
+            messages_to_send.append(get_random_sticker())
+
         line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=ai_response)],
+                messages=messages_to_send,
             )
         )
 
