@@ -3,7 +3,10 @@ LINE AI Chatbot - Christy Pan 藝術家分身 ｜ 時光憓所 Hui Atelier
 """
 
 import os
+import time
+import random
 import logging
+import threading
 from flask import Flask, request, abort
 
 from linebot.v3 import WebhookHandler
@@ -14,7 +17,9 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
+    PushMessageRequest,
     TextMessage,
+    ShowLoadingAnimationRequest,
 )
 
 from openai import OpenAI
@@ -459,6 +464,36 @@ def handle_follow(event):
         )
 
 
+def delayed_push_message(user_id, text, delay_seconds):
+    """延遲後用 push message 發送訊息，模擬真人打字速度"""
+    time.sleep(delay_seconds)
+    try:
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.push_message(
+                PushMessageRequest(
+                    to=user_id,
+                    messages=[TextMessage(text=text)],
+                )
+            )
+    except Exception as e:
+        logger.error(f"Push message failed: {e}")
+
+
+def calculate_delay(text):
+    """根據回覆長度計算延遲時間，模擬真人打字"""
+    length = len(text)
+    if length < 20:
+        # 短回覆：2-4秒
+        return random.uniform(2, 4)
+    elif length < 60:
+        # 中等回覆：3-6秒
+        return random.uniform(3, 6)
+    else:
+        # 長回覆：5-8秒
+        return random.uniform(5, 8)
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     user_id = event.source.user_id
@@ -475,6 +510,7 @@ def handle_message(event):
         service_triggers = ["你做什麼的", "你的工作", "什麼服務", "有什麼服務", "提供什麼", "怎麼收費", "費用", "報價"]
         for trigger in service_triggers:
             if trigger in text_lower:
+                # 服務選單用 reply 直接回（不需要延遲）
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
@@ -486,6 +522,7 @@ def handle_message(event):
         # 一般關鍵字匹配
         for keyword, static_reply in KEYWORD_RESPONSES.items():
             if keyword in text_lower:
+                # 關鍵字回覆也用 reply 直接回
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
@@ -495,6 +532,18 @@ def handle_message(event):
                 return
 
         # 2. 如果沒有觸發關鍵字，則進入 AI 自然對話
+        # 先顯示「正在輸入…」動畫
+        try:
+            line_bot_api.show_loading_animation(
+                ShowLoadingAnimationRequest(
+                    chat_id=user_id,
+                    loading_seconds=10
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Loading animation failed: {e}")
+
+        # 生成 AI 回覆
         ai_response = chat_with_ai(user_text, session["history"])
 
         session["history"].append({"role": "user", "content": user_text})
@@ -502,12 +551,15 @@ def handle_message(event):
         if len(session["history"]) > 20:
             session["history"] = session["history"][-20:]
 
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=ai_response)],
-            )
+        # 計算延遲時間（模擬真人打字速度）
+        delay = calculate_delay(ai_response)
+        
+        # 用背景線程延遲後 push message
+        thread = threading.Thread(
+            target=delayed_push_message,
+            args=(user_id, ai_response, delay)
         )
+        thread.start()
 
 
 if __name__ == "__main__":
