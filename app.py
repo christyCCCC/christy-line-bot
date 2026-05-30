@@ -531,16 +531,28 @@ def handle_message(event):
 
         # 直接用 reply message 回覆（最穩定）
         # 約 30% 機率附帶一個熊大貼圖
-        messages_to_send = [TextMessage(text=ai_response)]
-        if should_send_sticker():
-            messages_to_send.append(get_random_sticker())
-
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=messages_to_send,
+        try:
+            messages_to_send = [TextMessage(text=ai_response)]
+            if should_send_sticker():
+                messages_to_send.append(get_random_sticker())
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=messages_to_send,
+                )
             )
-        )
+        except Exception as e:
+            logger.error(f"Reply with sticker failed: {e}, retrying text only")
+            # 貼圖失敗時，只發純文字
+            try:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=ai_response)],
+                    )
+                )
+            except Exception as e2:
+                logger.error(f"Text-only reply also failed: {e2}")
 
 
 if __name__ == "__main__":
