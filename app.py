@@ -19,7 +19,7 @@ from linebot.v3.messaging import (
     ReplyMessageRequest,
     PushMessageRequest,
     TextMessage,
-    ShowLoadingAnimationRequest,
+    StickerMessage,
 )
 
 from openai import OpenAI
@@ -503,6 +503,77 @@ def handle_follow(event):
         )
 
 
+# ===== 貼圖功能 =====
+# LINE 內建貼圖包（使用官方免費貼圖）
+# package_id: 11537 = 可愛貼圖包, 11538 = 表情貼圖包, 11539 = 動物貼圖包
+STICKER_MOODS = {
+    "shy": [(11537, 52002734), (11537, 52002735), (11538, 51626494)],  # 害羞/臉紅
+    "happy": [(11537, 52002724), (11537, 52002739), (11538, 51626496)],  # 開心
+    "laugh": [(11537, 52002741), (11537, 52002728), (11538, 51626501)],  # 大笑
+    "angry": [(11537, 52002738), (11538, 51626509), (11538, 51626508)],  # 生氣/不爬
+    "love": [(11537, 52002736), (11538, 51626518), (11538, 51626519)],  # 愛心/撒嬌
+    "cool": [(11537, 52002727), (11537, 52002744), (11538, 51626503)],  # 酷/帥
+    "sad": [(11537, 52002742), (11538, 51626511), (11538, 51626514)],  # 難過/委屈
+    "wink": [(11537, 52002726), (11538, 51626497), (11538, 51626520)],  # 眨眼/調皮
+}
+
+
+def pick_sticker(user_text, ai_response):
+    """根據聊天內容決定是否送貼圖，以及送什麼貼圖"""
+    # 只有 30% 的機率會送貼圖（不要每次都送）
+    if random.random() > 0.3:
+        return None
+    
+    text_combined = (user_text + ai_response).lower()
+    
+    # 判斷情緒
+    if any(w in text_combined for w in ["生氣", "不爬", "不要", "討厭", "無聊", "不想理"]):
+        mood = "angry"
+    elif any(w in text_combined for w in ["害羞", "臉紅", "蹦", "唔", "羞"]):
+        mood = "shy"
+    elif any(w in text_combined for w in ["哈哈", "笑死", "超好笑", "笑", "🤣", "😂"]):
+        mood = "laugh"
+    elif any(w in text_combined for w in ["喜歡", "愛", "心動", "想你", "擁抱"]):
+        mood = "love"
+    elif any(w in text_combined for w in ["漂亮", "可愛", "謝謝", "開心", "好棒"]):
+        mood = "happy"
+    elif any(w in text_combined for w in ["難過", "委屈", "哭", "心痛"]):
+        mood = "sad"
+    elif any(w in text_combined for w in ["開玩笑", "調皮", "嘿嘿", "眨眼"]):
+        mood = "wink"
+    else:
+        # 隨機選一個開心或調皮的
+        mood = random.choice(["happy", "wink", "cool"])
+    
+    sticker = random.choice(STICKER_MOODS[mood])
+    return sticker
+
+
+def delayed_push_with_sticker(user_id, text, sticker, delay_seconds):
+    """延遲後用 push message 發送訊息 + 貼圖，模擬真人打字速度"""
+    time.sleep(delay_seconds)
+    try:
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            messages = [TextMessage(text=text)]
+            if sticker:
+                package_id, sticker_id = sticker
+                messages.append(
+                    StickerMessage(
+                        package_id=str(package_id),
+                        sticker_id=str(sticker_id)
+                    )
+                )
+            line_bot_api.push_message(
+                PushMessageRequest(
+                    to=user_id,
+                    messages=messages,
+                )
+            )
+    except Exception as e:
+        logger.error(f"Push message failed: {e}")
+
+
 def delayed_push_message(user_id, text, delay_seconds):
     """延遲後用 push message 發送訊息，模擬真人打字速度"""
     time.sleep(delay_seconds)
@@ -571,13 +642,16 @@ def handle_message(event):
                 return
 
         # 2. 如果沒有觸發關鍵字，則進入 AI 自然對話
-        # 先顯示「正在輸入…」動畫
+        # 顯示「正在輸入…」動畫（使用 requests 直接呼叫 API）
         try:
-            line_bot_api.show_loading_animation(
-                ShowLoadingAnimationRequest(
-                    chat_id=user_id,
-                    loading_seconds=10
-                )
+            import requests as req
+            req.post(
+                "https://api.line.me/v2/bot/chat/loading",
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}"
+                },
+                json={"chatId": user_id, "loadingSeconds": 10}
             )
         except Exception as e:
             logger.warning(f"Loading animation failed: {e}")
@@ -593,10 +667,13 @@ def handle_message(event):
         # 計算延遲時間（模擬真人打字速度）
         delay = calculate_delay(ai_response)
         
-        # 用背景線程延遲後 push message
+        # 判斷是否要附帶貼圖
+        sticker = pick_sticker(user_text, ai_response)
+        
+        # 用背景線程延遲後 push message（模擬真人打字時間）
         thread = threading.Thread(
-            target=delayed_push_message,
-            args=(user_id, ai_response, delay)
+            target=delayed_push_with_sticker,
+            args=(user_id, ai_response, sticker, delay)
         )
         thread.start()
 
