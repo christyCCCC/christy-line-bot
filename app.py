@@ -5,7 +5,8 @@ LINE AI Chatbot - Christy Pan 藝術家分身 ｜ 時光憓所 Hui Atelier
 import os
 import random
 import logging
-import time
+import threading
+import requests as req
 from flask import Flask, request, abort
 
 from linebot.v3 import WebhookHandler
@@ -530,10 +531,6 @@ def handle_message(event):
         if len(session["history"]) > 20:
             session["history"] = session["history"][-20:]
 
-        # 模擬真人打字延遲（2-5秒隨機）
-        delay = random.uniform(2, 5)
-        time.sleep(delay)
-
         # 直接用 reply message 回覆（最穩定）
         # 約 30% 機率附帶一個熊大貼圖
         try:
@@ -560,6 +557,23 @@ def handle_message(event):
                 logger.error(f"Text-only reply also failed: {e2}")
 
 
+# ===== Keep-alive 防止 Render 免費方案休眠 =====
+def keep_alive():
+    """每 14 分鐘 ping 自己一次，防止服務休眠"""
+    import time
+    url = os.environ.get("RENDER_EXTERNAL_URL", "https://christy-line-bot.onrender.com")
+    while True:
+        time.sleep(840)  # 14 分鐘
+        try:
+            req.get(f"{url}/health", timeout=10)
+            logger.info("Keep-alive ping sent")
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
+
+
 if __name__ == "__main__":
+    # 啟動 keep-alive 背景線程
+    alive_thread = threading.Thread(target=keep_alive, daemon=True)
+    alive_thread.start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
