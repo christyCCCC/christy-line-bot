@@ -5,6 +5,7 @@ LINE AI Chatbot - Christy Pan 藝術家分身 ｜ 時光憓所 Hui Atelier
 import os
 import random
 import logging
+import time
 from flask import Flask, request, abort
 
 from linebot.v3 import WebhookHandler
@@ -528,6 +529,10 @@ def handle_message(event):
         session["history"].append({"role": "assistant", "content": ai_response})
         if len(session["history"]) > 20:
             session["history"] = session["history"][-20:]
+
+        # 模擬真人打字延遲（2-5秒隨機）
+        delay = random.uniform(2, 5)
+        time.sleep(delay)
 
         # 直接用 reply message 回覆（最穩定）
         # 約 30% 機率附帶一個熊大貼圖
