@@ -475,6 +475,12 @@ def callback():
 def health():
     return "OK", 200
 
+@app.route("/debug-env", methods=["GET"])
+def debug_env():
+    secret = os.environ.get("LINE_CHANNEL_SECRET", "NOT SET")
+    token = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "NOT SET")
+    return f"SECRET: {secret[:8]}...{secret[-4:]} (len={len(secret)})\nTOKEN: {token[:8]}...{token[-4:]} (len={len(token)})", 200
+
 
 @handler.add(FollowEvent)
 def handle_follow(event):
