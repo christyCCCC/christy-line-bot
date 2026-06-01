@@ -29,8 +29,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # LINE API 設定
-CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "cd401371ddae81e97041b0228d8d9c66")
-CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "BsOTiwjQW/fociM0m2gMplQUa1XNCgN6aU3GAM/jeArAgH8NPjYo9vDkABp5GsX+G2HmB7fo4BrNaSDIohiVpGCGkrF5cq/M2r1GDz+9iaj8vFbJMMBAVbv+1Rvj+ff/ZHao4aH9a1esvFTyju+EEQdB04t89/1O/w1cDnyilFU=")
+CHANNEL_SECRET = "cd401371ddae81e97041b0228d8d9c66"
+CHANNEL_ACCESS_TOKEN = "BsOTiwjQW/fociM0m2gMplQUa1XNCgN6aU3GAM/jeArAgH8NPjYo9vDkABp5GsX+G2HmB7fo4BrNaSDIohiVpGCGkrF5cq/M2r1GDz+9iaj8vFbJMMBAVbv+1Rvj+ff/ZHao4aH9a1esvFTyju+EEQdB04t89/1O/w1cDnyilFU="
 
 # OpenAI 設定
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
