@@ -19,6 +19,7 @@ from linebot.v3.messaging import (
     ReplyMessageRequest,
     TextMessage,
     StickerMessage,
+    ImageMessage,
 )
 
 from openai import OpenAI
@@ -462,6 +463,16 @@ WELCOME_MESSAGE = """嗨 歡迎你 ✨
 
 有任何想聊的，直接跟我說就好 🌹"""
 
+# ===== 圖文選單圖片對應 =====
+MENU_IMAGES = {
+    "藝術收藏": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/mFoqEFtuLEpjdzxM.png",
+    "沉浸式體驗": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/qGcUrnqrsNzrbiSJ.png",
+    "藝術調香": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/yBacRWJqwqoDgPHO.png",
+    "企業合作": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/iKHfqkmlNWZkyXro.png",
+    "品牌孵化": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/oYyKHZAmaUUZMqeq.png",
+    "關於我們": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/dXlNKqIpFDaAgmFS.png",
+}
+
 # ===== 關鍵字與靜態回覆分流 =====
 SERVICE_MENU = "我的品牌叫做時光憓所 ✨\n藝術 × 香氣 × 體驗 × 療癒\n\n我有提供這些服務，你可以輸入數字看看哪個有興趣：\n\n1. 🎨 藝術創作與收藏\n2. 🌌 沉浸式藝術體驗\n3. 🌿 企業藝術療癒\n4. 🌸 個人調香體驗\n5. 🌸 企業香氛課程\n6. 🏢 品牌香氛訂製\n7. 🚀 香氛品牌孵化\n8. ✨ VIP旗艦方案\n\n直接打數字就好 🌹"
 
@@ -633,10 +644,15 @@ def handle_message(event):
         # 2. 一般關鍵字匹配
         for keyword, static_reply in KEYWORD_RESPONSES.items():
             if text_lower == keyword or (len(keyword) > 1 and keyword in text_lower):
+                msgs = []
+                if keyword in MENU_IMAGES:
+                    img_url = MENU_IMAGES[keyword]
+                    msgs.append(ImageMessage(original_content_url=img_url, preview_image_url=img_url))
+                msgs.append(TextMessage(text=static_reply))
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[TextMessage(text=static_reply)],
+                        messages=msgs,
                     )
                 )
                 return
