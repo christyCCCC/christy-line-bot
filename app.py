@@ -476,6 +476,150 @@ KEYWORD_RESPONSES = {
     "音樂": "唱歌就是療癒又舒壓\n尤其是自彈自唱的時候⋯\n\n我有寫過幾首歌\n《幸運的遇見》和《酒醒以後》\n都是我的詞曲創作\n\n你也喜歡音樂嗎？",
 }
 
+# ===== 隱藏收藏館通關密語機制 =====
+GALLERY_ENTRANCE_TEXT = """\u2800
+\u2503 時光憧所 ─ 隱藏收藏館
+\u2503
+\u2503 你推開了一扁不該被看見的門。
+\u2503
+\u2503 很好。
+\u2503 能走到這裡的人 不多。
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 這裡有三道門
+\u2503 每道門背後是一個不同的世界
+\u2503 每個世界只接受被選中的人
+\u2503
+\u2503 🌿 第一道門｜旅人之門
+\u2503 「你會知道自己是誰」
+\u2503 → 輸入通關密語即可開啟
+\u2503
+\u2503 👑 第二道門｜收藏家之門
+\u2503 「你會看見別人看不見的東西」
+\u2503 → 輸入通關密語即可開啟
+\u2503
+\u2503 🌹 第三道門｜時光密室
+\u2503 「你會擁有帶不走的東西」
+\u2503 → 輸入通關密語即可開啟
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 密語不在這裡。
+\u2503 每道門的鑰匙 都在館長手上。
+\u2503
+\u2503 想獲得通關密語？
+\u2503 直接問館長：「我想開門」
+\u2503 她會決定 你準備好了沒有。
+\u2800"""
+
+GALLERY_DOOR1_TEXT = """\u2800
+\u2503 🌿 旅人之門已為你開啟。
+\u2503
+\u2503 你踏進來了。
+\u2503 從這一刻起 你不再是路人。
+\u2503
+\u2503 在時光憧所
+\u2503 每一位旅人身上都會留下痕跡
+\u2503 那些痕跡 我們叫它「勳章」
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 勳章不能買。
+\u2503 只能活出來。
+\u2503
+\u2503 你現在是藝術旅人。
+\u2503 歡迎你。
+\u2503 接下來的路 你會自己知道該往哪走。
+\u2800"""
+
+GALLERY_DOOR2_TEXT = """\u2800
+\u2503 👑 收藏家之門已為你開啟。
+\u2503
+\u2503 你不是來看熱鬧的。
+\u2503 你是願意停下來 好好感受的人。
+\u2503
+\u2503 這扁門後面
+\u2503 是只有收藏家才能觸碰的世界
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 ✦ VIP 限定體驗 ✦
+\u2503
+\u2503 ◾ 藝術體驗收藏｜香氣人格分析・專屬香水・精裝收藏盒
+\u2503 ◾ 沉浸式藝術之夜｜微醜油畫・專屬調香・專業攝影
+\u2503
+\u2503 這些活動不會出現在任何公開頁面。
+\u2503 只有站在這裡的人 才知道它存在。
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 想跟 Christy 本人有現場互動？
+\u2503 趕快解鎖最高段位的勳章吧。
+\u2503
+\u2503 留意館長的訊息。
+\u2503 下一封邀請 不會提前通知。
+\u2800"""
+
+GALLERY_DOOR3_TEXT = """\u2800
+\u2503 🌹 時光密室已為你開啟。
+\u2503
+\u2503 你來到了最深的地方。
+\u2503 這裡沒有價目表 沒有檞窗 沒有標籤。
+\u2503
+\u2503 只有故事。
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 ✦ 時光典藏者 ✦
+\u2503
+\u2503 這個身份不是申請來的。
+\u2503 是館長看見你之後
+\u2503 決定把鑰匙交給你的。
+\u2503
+\u2503 只有典藏者
+\u2503 才能收藏這裡的作品。
+\u2503 每一件作品只會遇見一個人。
+\u2503
+\u2503 ━━━━━━━━━━
+\u2503
+\u2503 如果你準備好了
+\u2503 不用說。
+\u2503 館長會知道的。
+\u2503
+\u2503 在那之前
+\u2503 讓這裡的空氣記住你。
+\u2800"""
+
+# 收藏館圖片 CDN URL
+GALLERY_IMAGES = {
+    "door1": [
+        "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/oFgEklIcEejxFcsV.JPG",
+        "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/ohfFmWsXKlINuusc.JPG",
+    ],
+    "door2": [
+        "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/GrBNAtjuPNCLHgQt.JPG",
+    ],
+    "door3": [
+        "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/KspZgHYhQNMxkEVn.png",
+    ],
+}
+
+
+def get_gallery_response(user_text):
+    """檢查是否是收藏館通關密語，回傳對應的回覆內容或 None"""
+    text = user_text.strip()
+    if text in ["開啟收藏館", "收藏館"]:
+        return {"text": GALLERY_ENTRANCE_TEXT, "images": []}
+    elif text == "我要成為藝術旅人":
+        return {"text": GALLERY_DOOR1_TEXT, "images": GALLERY_IMAGES["door1"]}
+    elif text == "我要成為收藏家":
+        return {"text": GALLERY_DOOR2_TEXT, "images": GALLERY_IMAGES["door2"]}
+    elif text == "我想收藏一段故事":
+        return {"text": GALLERY_DOOR3_TEXT, "images": GALLERY_IMAGES["door3"]}
+    return None
+
+
 # ===== 熊大貼圖庫（LINE 官方免費貼圖）=====
 # Package 6362: 熊大＆兔兔（迷你篇）- Brown and Cony Fun Size Pack (zh_TW)
 BROWN_STICKERS = [
@@ -615,7 +759,24 @@ def handle_message(event):
                 )
                 return
 
-        # 2. 一般關鍵字匹配
+        # 2. 隱藏收藏館通關密語機制
+        gallery_result = get_gallery_response(user_text)
+        if gallery_result:
+            msgs = []
+            # 先發圖片（最多 4 張，加上文字共 5 則是 LINE 上限）
+            for img_url in gallery_result["images"][:4]:
+                msgs.append(ImageMessage(original_content_url=img_url, preview_image_url=img_url))
+            # 再發文字
+            msgs.append(TextMessage(text=gallery_result["text"]))
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=msgs,
+                )
+            )
+            return
+
+        # 3. 一般關鍵字匹配
         for keyword, static_reply in KEYWORD_RESPONSES.items():
             if text_lower == keyword or (len(keyword) > 1 and keyword in text_lower):
                 msgs = []
@@ -631,7 +792,7 @@ def handle_message(event):
                 )
                 return
 
-        # 3. AI 自然對話
+        # 4. AI 自然對話
         ai_response = chat_with_ai(user_text, session["history"])
 
         session["history"].append({"role": "user", "content": user_text})
