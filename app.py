@@ -717,16 +717,22 @@ def get_unique_greeting():
 
 
 def send_morning_broadcast():
-    """每天早上 10 點廣播早安訊息給所有好友"""
+    """每天早上 10 點廣播早安訊息給所有好友（附帶熊大貼圖）"""
     try:
         greeting = get_unique_greeting()
+        sticker = random.choice(BROWN_STICKERS)
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
         }
         data = {
             "messages": [
-                {"type": "text", "text": greeting}
+                {"type": "text", "text": greeting},
+                {
+                    "type": "sticker",
+                    "packageId": sticker["package_id"],
+                    "stickerId": sticker["sticker_id"],
+                },
             ]
         }
         resp = req.post(
