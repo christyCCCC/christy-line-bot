@@ -8,6 +8,9 @@ import logging
 import threading
 import requests as req
 from flask import Flask, request, abort
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -662,6 +665,81 @@ def handle_message(event):
                 logger.error(f"Text-only reply also failed: {e2}")
 
 
+# ===== 每日早安訊息排程 =====
+MORNING_GREETINGS = [
+    "早安\n今天也要把說不清的感覺 變成看得見的樣子",
+    "早安\n昨天的事就留在昨天吧 今天值得一個全新的你",
+    "早安\n醒來的第一件事 是決定今天要對自己好一點",
+    "早安\n有些路只有自己走過才會發光",
+    "早安\n世界很大 但你只需要照顧好今天就好",
+    "早安\n別急著趕路 風景都在慢下來的時候才看得見",
+    "早安\n你不需要完美 你只需要真實",
+    "早安\n今天的你 值得被溫柔對待",
+    "早安\n把每一天都活成值得回憶的樣子",
+    "早安\n陽光很好 適合做一件讓自己開心的事",
+    "早安\n有些美好 是留給願意等待的人的",
+    "早安\n你醒了嗎 今天也要好好的哦",
+    "早安\n不用急著找答案 有時候問題本身就是方向",
+    "早安\n今天的風很舒服 適合放空也適合出發",
+    "早安\n人一定要瘋狂愛上什麼東西 才不至於被這無趣的生活吞沒",
+    "早安\n清醒的早晨 比任何咖啡都提神",
+    "早安\n你值得擁有一個 不用假裝的一天",
+    "早安\n今天也要記得 你比你以為的更勇敢",
+    "早安\n有些日子平凡到不行 但回頭看都是最好的時光",
+    "早安\n把喜歡的事做好 剩下的交給時間",
+    "早安\n每一個早起的人 都在偷偷變厲害",
+    "早安\n今天適合做一件 昨天不敢做的事",
+    "早安\n生活不會每天都精彩 但你可以每天都認真",
+    "早安\n你出現在這個世界上 本身就是一件很浪漫的事",
+    "早安\n不要小看今天 它可能是改變一切的那一天",
+    "早安\n慢慢來 比較快",
+    "早安\n今天也要做一個 讓自己喜歡的人",
+    "早安\n有些話不用說出口 用行動就好",
+    "早安\n你的存在 就是某個人最好的風景",
+    "早安\n今天的目標：好好吃飯 好好生活 好好愛自己",
+]
+
+# 用來追蹤已用過的訊息，避免短期內重複
+used_greetings = []
+
+
+def get_unique_greeting():
+    """取得不重複的早安訊息"""
+    global used_greetings
+    available = [g for g in MORNING_GREETINGS if g not in used_greetings]
+    if not available:
+        # 全部用過了，重置
+        used_greetings = []
+        available = MORNING_GREETINGS[:]
+    greeting = random.choice(available)
+    used_greetings.append(greeting)
+    return greeting
+
+
+def send_morning_broadcast():
+    """每天早上 10 點廣播早安訊息給所有好友"""
+    try:
+        greeting = get_unique_greeting()
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
+        }
+        data = {
+            "messages": [
+                {"type": "text", "text": greeting}
+            ]
+        }
+        resp = req.post(
+            "https://api.line.me/v2/bot/message/broadcast",
+            headers=headers,
+            json=data,
+            timeout=10,
+        )
+        logger.info(f"Morning broadcast sent: {resp.status_code} | {greeting[:30]}...")
+    except Exception as e:
+        logger.error(f"Morning broadcast failed: {e}")
+
+
 # ===== Keep-alive 防止 Render 免費方案休眠 =====
 def keep_alive():
     """每 14 分鐘 ping 自己一次，防止服務休眠"""
@@ -674,6 +752,20 @@ def keep_alive():
             logger.info("Keep-alive ping sent")
         except Exception as e:
             logger.warning(f"Keep-alive ping failed: {e}")
+
+
+# ===== 排程器 =====
+tw_tz = pytz.timezone("Asia/Taipei")
+scheduler = BackgroundScheduler(timezone=tw_tz)
+scheduler.add_job(
+    send_morning_broadcast,
+    CronTrigger(hour=10, minute=0, timezone=tw_tz),
+    id="morning_greeting",
+    name="每日早安訊息",
+    replace_existing=True,
+)
+scheduler.start()
+logger.info("Scheduler started: morning broadcast at 10:00 AM (Asia/Taipei)")
 
 
 if __name__ == "__main__":
