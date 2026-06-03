@@ -438,39 +438,18 @@ WELCOME_MESSAGE = """嗨 歡迎你 ✨
 有任何想聊的，直接跟我說就好 🌹"""
 
 # ===== 圖文選單圖片對應 =====
-MENU_IMAGES = {
-    "藝術收藏": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/mFoqEFtuLEpjdzxM.png",
-    "沉浸式體驗": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/qGcUrnqrsNzrbiSJ.png",
-    "藝術調香": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/yBacRWJqwqoDgPHO.png",
-    "企業合作": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/iKHfqkmlNWZkyXro.png",
-    "品牌孵化": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/oYyKHZAmaUUZMqeq.png",
-    "關於我們": "https://files.manuscdn.com/user_upload_by_module/session_file/310519663157127252/dXlNKqIpFDaAgmFS.png",
-}
+MENU_IMAGES = {}
 
 # ===== 關鍵字與靜態回覆分流 =====
-SERVICE_MENU = "我的品牌叫做時光憓所 ✨\n藝術 × 香氣 × 體驗 × 療癒\n\n我有提供這些服務，你可以輸入數字看看哪個有興趣：\n\n1. 🎨 藝術創作與收藏\n2. 🌌 沉浸式藝術體驗\n3. 🌿 企業藝術療癒\n4. 🌸 個人調香體驗\n5. 🌸 企業香氛課程\n6. 🏢 品牌香氛訂製\n7. 🚀 香氛品牌孵化\n8. ✨ VIP旗艦方案\n\n直接打數字就好 🌹"
-
 KEYWORD_RESPONSES = {
-    "服務總覽": SERVICE_MENU,
-    "服務": SERVICE_MENU,
-    "價格": SERVICE_MENU,
-    "多少錢": SERVICE_MENU,
-    "怎麼預約": SERVICE_MENU,
-    "合作": SERVICE_MENU,
-    "1": "🎨 藝術創作與收藏\nArt Collection & Commission\n\n為你量身打造獨一無二的原創藝術作品\n\n包含：創作訪談｜主題發想｜原創創作｜收藏證書｜簽名作品\n\n執行時間：14－90天\n\n尺寸與價格：\n30×30cm → NT$30,000 起\n50×50cm → NT$50,000 起\n80×80cm → NT$100,000 起\n100×100cm↑ → NT$200,000 起\n\n想聊聊？私訊 IG @christypan.art 🌹",
-    "2": "🌌 沉浸式藝術體驗\nImmersive Art Experience\n\n結合藝術、音樂、香氛與故事\n\n包含：微醺油畫創作｜香氛體驗｜藝術引導｜全套材料｜作品帶回｜活動紀錄\n\n時間：2－3小時\n人數：4－20人\n\n費用：\n4－8人包場 → NT$30,000 起\n10－20人包場 → NT$50,000 起\n品牌VIP活動 → NT$120,000 起\n策展級活動 → NT$300,000 起\n\n想辦一場？跟我聊聊 🌹",
-    "3": "🌿 企業藝術療癒課程\nCorporate Wellness Program\n\n提升團隊幸福感與創造力\n\n包含：講師授課｜藝術療癒活動｜團隊共創｜全套材料｜課程講義｜團體合照\n\n方案：\n標準課程 2hr/20人內 → NT$30,000 起\n半日工作坊 4hr/20人內 → NT$60,000 起\n深度體驗 6hr/20人內 → NT$100,000 起\n年度合作 每季1場 → NT$300,000 起\n\n想了解更多？跟我說 🌹",
-    "4": "🌸 個人藝術調香體驗\nPersonal Fragrance Experience\n\n打造屬於你的專屬氣味\n\n包含：香氛教學｜香氣人格分析｜專屬香氣設計｜香氛命名｜故事卡｜30ml香水成品\n\n時間：2－3小時\n\n費用：\n單人體驗 → NT$3,600\n雙人體驗 → NT$6,800\nVIP體驗 → NT$12,000\n\n想來一場嗎？🌹",
-    "5": "🌸 企業香氛體驗課程\nCorporate Fragrance Workshop\n\n企業最受歡迎的五感體驗活動\n每人帶走一瓶專屬香水\n\n包含：香氛知識｜團隊調香｜每人專屬香水｜品牌香氣探索｜成果分享\n\n時間：2－3小時\n\n費用：\n10－20人 → NT$50,000 起\n20－40人 → NT$80,000 起\n40人以上 → 專案報價\n\n想辦一場？跟我聊 🌹",
-    "6": "🏢 企業專屬香氛訂製\nBrand Signature Fragrance\n\n打造品牌專屬記憶點\n\n包含：品牌訪談｜DNA分析｜香氣策略規劃｜香味開發｜三版提案｜配方建置｜品牌香氛簡報\n\n執行時間：30－60天\n費用：NT$80,000 起\n\n讓你的品牌有自己的味道 🌹",
-    "7": "🚀 香氛品牌孵化\nFragrance Brand Incubation\n\n從0到1打造自己的香氛品牌\n\n包含：品牌定位｜命名｜故事｜香味開發｜商品規劃｜定價策略｜商業模式｜通路建議｜上市策略\n\n執行時間：1－3個月\n\n費用：\n基礎版 → NT$150,000 起\n完整孵化版 → NT$300,000 起\n\n想打造自己的品牌？聊聊 🌹",
-    "8": "✨ VIP旗艦方案\n時光憓所・藝術療癒之夜\n\n最高端客製服務\n\n包含：微醺藝術創作｜專屬香氛設計｜音樂沉浸體驗｜情緒探索引導｜精緻茶點｜專業攝影紀錄｜作品收藏證書\n\n時間：3－4小時\n人數：6－12人\n費用：NT$80,000－150,000／場\n\n這是我們最特別的體驗\n想了解更多？私訊我 🌹",
-    "藝術收藏": "🎨 藝術收藏｜Art Collection\n\n每一幅畫，都是一段故事的收藏\n\n我的作品以情緒、記憶、自然為靈感\n用色彩和筆觸記錄那些說不出口的感受\n\n✦ 原創畫作收藏\n✦ 客製創作（為你量身打造專屬作品）\n✦ 藝術收藏諮詢\n\n尺寸與價格：\n30×30cm → NT$30,000 起\n50×50cm → NT$50,000 起\n80×80cm → NT$100,000 起\n100×100cm↑ → NT$200,000 起\n\n想看更多作品？\n→ IG @christypan.art\n\n想聊聊收藏？直接跟我說 🌹",
-    "沉浸式體驗": "🍷 沉浸式體驗｜Immersive Experience\n\n微醺 × 油畫 × 五感 × 療癒\n\n一場結合藝術、音樂、香氛與微醺的感官之旅\n讓你在放鬆中找到創作的靈感\n\n✦ 微醺油畫創作\n✦ 五感沉浸體驗\n✦ 包場活動（生日、閨蜜聚會、品牌活動）\n\n時間：2－3小時\n人數：4－20人\n\n費用：\n4－8人包場 → NT$30,000 起\n10－20人包場 → NT$50,000 起\n品牌VIP活動 → NT$120,000 起\n\n想辦一場？跟我聊聊 🌹",
-    "藝術調香": "🌸 藝術調香｜Fragrance Experience\n\n用氣味寫一封給自己的情書\n\n每個人都有屬於自己的味道\n透過調香，找到那個最像你的氣味\n\n✦ 個人調香體驗（打造專屬香水）\n✦ 雙人調香（約會、閨蜜、情侶）\n✦ 香氣探索工作坊\n\n時間：2－3小時\n\n費用：\n單人體驗 → NT$3,600\n雙人體驗 → NT$6,800\nVIP體驗 → NT$12,000\n\n想來一場嗎？跟我說 🌹",
-    "企業合作": "🤝 企業合作｜Corporate Program\n\n為企業注入藝術與療癒的能量\n\n✦ 企業包班（油畫、調香、五感體驗）\n✦ 團隊共創工作坊\n✦ 員工療癒課程\n✦ 品牌活動策劃\n\n方案：\n標準課程 2hr/20人內 → NT$30,000 起\n半日工作坊 4hr/20人內 → NT$60,000 起\n深度體驗 6hr/20人內 → NT$100,000 起\n企業香氛課程 10-40人 → NT$50,000 起\n\n想了解更多？跟我聊聊 🌹",
-    "品牌孵化": "🚀 品牌孵化｜Brand Incubation\n\n從0到1，打造你的香氛品牌\n\n如果你也想擁有自己的香氛品牌\n我可以陪你走過從概念到上市的每一步\n\n✦ 香氛品牌創業輔導\n✦ 品牌定位與命名\n✦ 產品開發（香水、擴香、蠟燭等）\n✦ 商業模式規劃\n\n另外也提供：\n✦ 企業專屬香氛訂製（品牌記憶點）\n  → NT$80,000 起\n\n品牌孵化方案：\n基礎版 → NT$150,000 起\n完整孵化版 → NT$300,000 起\n\n想聊聊你的品牌夢？跟我說 🌹",
-    "關於我們": "✨ 關於時光憓所｜About Hui Atelier\n\n用藝術收藏故事\n用香氣記錄回憶\n用體驗療癒生活\n\n時光憓所是一個結合藝術、香氛、體驗與療癒的品牌\n由藝術家 Christy Pan 創立\n\n我相信每個人都值得被好好對待\n而藝術和香氣，是最溫柔的療癒方式\n\n✦ 品牌主理人：Christy Pan\n✦ 專長：油畫創作、香氛設計、沉浸式體驗策劃\n✦ IG：@hui.atelier｜@christypan.art\n\n想認識更多？直接跟我聊天就好 🌹",
+    # 新選單觸發詞（待補充內容）
+    "探索更多": "歡迎來到阿波羅神殿 🎶\n藝術・創作・靈感\n\n這裡的內容正在更新中…\n想了解更多可以直接問我 🌹",
+    "預約聊天時光": "歡迎來到阿芙蘿黛蒂花園 🌹\n愛情・關係・自我價值\n\n這裡的內容正在更新中…\n想聊聊直接跟我說就好 🌹",
+    "查看活動": "歡迎來到狄俄尼索斯沙龍 🍷\n微醺・自由・體驗\n\n這裡的內容正在更新中…\n想知道最新活動可以直接問我 🌹",
+    "探索課程": "歡迎來到雅典娜學院 🦉\n智慧・策略・成長\n\n這裡的內容正在更新中…\n想了解課程可以直接問我 🌹",
+    "洽詢合作": "歡迎來到赫耳墨斯計畫 ⚔️\n商業・連結・合作\n\n這裡的內容正在更新中…\n想洽談合作可以直接問我 🌹",
+    "了解更多": "歡迎來到奧林帕斯之書 📚\n品牌故事・創作理念\n\n這裡的內容正在更新中…\n想認識更多可以直接問我 🌹",
+    # 其他關鍵字
     "作品": "想看我的作品嗎？\n\n到我的 IG 逛逛吧：\nhttps://www.instagram.com/christypan.art/\n\n有喜歡的作品可以跟我說 🌹",
     "展覽": "最新的展覽和活動資訊\n可以追蹤我的 IG @christypan.art\n我有新動態都會發在那邊\n\n或是直接問我，我告訴你最近在忙什麼",
     "音樂": "唱歌就是療癒又舒壓\n尤其是自彈自唱的時候⋯\n\n我有寫過幾首歌\n《幸運的遇見》和《酒醒以後》\n都是我的詞曲創作\n\n你也喜歡音樂嗎？",
@@ -738,18 +717,8 @@ def handle_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
 
-        # 1. 優先檢查服務相關觸發詞
+        # 1. 準備文字比對
         text_lower = user_text.lower()
-        service_triggers = ["你做什麼的", "你的工作", "什麼服務", "有什麼服務", "提供什麼", "怎麼收費", "費用", "報價", "你們有什麼"]
-        for trigger in service_triggers:
-            if trigger in text_lower:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=SERVICE_MENU)],
-                    )
-                )
-                return
 
         # 2. 隱藏收藏館通關密語機制
         gallery_result = get_gallery_response(user_text)
