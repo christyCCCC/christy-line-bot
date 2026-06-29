@@ -901,10 +901,14 @@ scheduler.add_job(
 scheduler.start()
 logger.info("Scheduler started: morning broadcast at 10:00 AM (Asia/Taipei)")
 
+# ===== 啟動 keep-alive 背景線程（module 載入時即啟動，適用於 gunicorn）=====
+# 放在這裡而非 __main__，是因為 Render 用 gunicorn 啟動，不會執行 __main__ 區塊，
+# 若不這樣寫 keep_alive 永遠不會啟動，免費方案會休眠，導致 10 點排程不觸發。
+alive_thread = threading.Thread(target=keep_alive, daemon=True)
+alive_thread.start()
+logger.info("Keep-alive thread started (anti-sleep ping every 14 min)")
+
 
 if __name__ == "__main__":
-    # 啟動 keep-alive 背景線程
-    alive_thread = threading.Thread(target=keep_alive, daemon=True)
-    alive_thread.start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
