@@ -11,7 +11,3 @@ services:
         value: 3.11.11
       - key: LINE_CHANNEL_SECRET
         sync: false
-      - key: LINE_CHANNEL_ACCESS_TOKEN
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
