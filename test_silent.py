@@ -72,8 +72,9 @@ class WelcomeWebhookTests(unittest.TestCase):
                 'replyToken': 'test-reply-token',
                 'messages': [{'type': 'text', 'text': app_module.WELCOME_MESSAGE}],
             })
-            self.assertIn('歡迎來到《萬物可愛論》。', data['messages'][0]['text'])
-            self.assertIn("I don't make the world cute. I simply see the cute side of it.", data['messages'][0]['text'])
+            self.assertIn('歡迎進入 Christy P 的藝術世界。', data['messages'][0]['text'])
+            self.assertIn('EVERYTHING IS CUTE turns toward the parts of ourselves we tend to hide', data['messages'][0]['text'])
+            self.assertIn('“I don’t make the world cute.\nI simply see the cute side of it.”', data['messages'][0]['text'])
 
 
 if __name__ == '__main__':
