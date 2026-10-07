@@ -1,6 +1,6 @@
-# Christy P 官方 LINE：靜默過渡版
+# Christy P 官方 LINE：雙語歡迎過渡版
 
-本版本只保留簽章驗證的 LINE Webhook 與健康檢查。**不發送文字、貼圖、歡迎訊息、AI 聊天、早安廣播，也不處理任何舊品牌關鍵字。** 六格圖文選單由 LINE Messaging API 上傳與管理，不由 Flask 伺服器產生。
+本版本保留簽章驗證的 LINE Webhook，**僅在新好友加入（FollowEvent）時送出一則經核准的中英文歡迎訊息**，文案位於 `welcome_message.txt`。一般文字、六格選單點擊、AI 聊天及早安廣播仍維持靜默；舊品牌關鍵字不會回覆。六格圖文選單由 LINE Messaging API 管理，不由 Flask 伺服器產生。
 
 ## 六格選單（圖片已由使用者提供）
 
@@ -13,4 +13,4 @@
 | 下中 | 購買據點 | 靜默 postback，待藝廊／通路資訊 |
 | 右下 | 合作洽詢 | 靜默 postback，待正式合作方式 |
 
-部署時設定 `LINE_CHANNEL_SECRET` 環境變數，供 `/callback` 驗證 LINE 的 `X-Line-Signature`；`GET /health` 回 `OK`。舊品牌程式與選單已另外封存並交付。若未來恢復回覆或排程，應依新品牌內容重新審核，**不要直接啟用舊版程式**。
+部署時設定 `LINE_CHANNEL_SECRET` 和 `LINE_CHANNEL_ACCESS_TOKEN` 環境變數；`/callback` 驗證 LINE 的 `X-Line-Signature` 後，只在 FollowEvent 使用 LINE reply API 回覆一則 `welcome_message.txt`。`GET /health` 回 `OK`，`GET /status` 回報 `welcome_only`。LINE 官方帳號管理後台若另有原生歡迎訊息，應關閉以免重複。舊品牌程式與選單已另外封存並交付。若未來恢復其他回覆或排程，應依新品牌內容重新審核，**不要直接啟用舊版程式**。
