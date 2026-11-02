@@ -1,7 +1,7 @@
-"""Christy P LINE webhook: follow greeting and approved artist biography.
+"""Christy P LINE webhook: native welcome, artist biography, and text chat.
 
-All ordinary messages and every postback other than ``christy_p:about`` remain
-silent. This service does not schedule, push, broadcast, or provide AI chat.
+Every postback other than ``christy_p:about`` remains silent. This service
+does not schedule, push, or broadcast messages.
 """
 
 import base64
@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 
 from flask import Flask, abort, request
+import chat_engine
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 WELCOME_DELIVERY = os.environ.get("WELCOME_DELIVERY", "line_official_account")
+TEXT_CHAT_ENABLED = os.environ.get("TEXT_CHAT_ENABLED", "true").lower() in {"1", "true", "yes"}
 WELCOME_MESSAGE = Path(__file__).with_name("welcome_message.txt").read_text(encoding="utf-8").strip()
 ABOUT_ARTIST_MESSAGE = Path(__file__).with_name("about_artist.txt").read_text(encoding="utf-8").strip()
 ABOUT_ARTIST_POSTBACK = "christy_p:about"
@@ -59,11 +61,13 @@ if not ABOUT_ARTIST_MESSAGE or len(ABOUT_ARTIST_MESSAGE) > 5000:
     raise RuntimeError("The approved bilingual artist biography is empty or too long")
 
 
-def reply_with_text(reply_token: str, text: str) -> None:
-    """Send one approved text message using LINE's one-time reply token."""
+def reply_with_messages(reply_token: str, texts: list[str]) -> None:
+    """Use LINE's one-time reply token once, with up to five text bubbles."""
+    if not texts or len(texts) > 5 or any(not isinstance(t, str) or not t.strip() or len(t) > 5000 for t in texts):
+        raise RuntimeError("Invalid outbound text messages")
     payload = {
         "replyToken": reply_token,
-        "messages": [{"type": "text", "text": text}],
+        "messages": [{"type": "text", "text": text} for text in texts],
     }
     outbound = urllib.request.Request(
         "https://api.line.me/v2/bot/message/reply",
@@ -79,6 +83,11 @@ def reply_with_text(reply_token: str, text: str) -> None:
             raise RuntimeError(f"LINE reply API returned HTTP {response.status}")
 
 
+def reply_with_text(reply_token: str, text: str) -> None:
+    """Send one text bubble."""
+    reply_with_messages(reply_token, [text])
+
+
 def reply_to_follow(reply_token: str) -> None:
     """Send the approved welcome message for a follow event."""
     reply_with_text(reply_token, WELCOME_MESSAGE)
@@ -87,6 +96,20 @@ def reply_to_follow(reply_token: str) -> None:
 def reply_to_about_artist(reply_token: str) -> None:
     """Send the approved bilingual artist biography for its exact postback."""
     reply_with_text(reply_token, ABOUT_ARTIST_MESSAGE)
+
+
+def reply_to_text(reply_token: str, text: str, source: dict) -> None:
+    """Reply to a typed text; retain only a salted anonymous memory key."""
+    user_id = source.get("userId", "")
+    context_id = source.get("groupId") or source.get("roomId") or "private"
+    raw_key = str(context_id) + ":" + str(user_id)
+    session_key = hmac.new(CHANNEL_SECRET.encode(), raw_key.encode(), hashlib.sha256).hexdigest() if user_id else ""
+    try:
+        texts = chat_engine.make_reply(text, session_key)
+    except Exception:
+        logger.warning("LINE chat fallback: error_status=chat_unavailable")
+        texts = ["我是 Christy P 官方 LINE 的自動回覆助手。這次先用簡短回覆接住：輸入 0 可查看文字功能，或輸入「測試歡迎」查看歡迎訊息。"]
+    reply_with_messages(reply_token, texts)
 
 
 def safe_event_type(event: dict) -> str:
@@ -160,6 +183,15 @@ def callback():
             send_event_reply(event, event_type, reply_to_follow)
             continue
 
+        if event_type == "message" and TEXT_CHAT_ENABLED:
+            message = event.get("message")
+            if isinstance(message, dict) and message.get("type") == "text" and isinstance(message.get("text"), str):
+                source = event.get("source")
+                if not isinstance(source, dict):
+                    source = {}
+                send_event_reply(event, event_type, lambda token: reply_to_text(token, message["text"], source))
+            continue
+
         if event_type != "postback":
             continue
 
@@ -180,14 +212,17 @@ def status():
     return {
         "brand": "Christy P",
         "mode": (
-            "native_welcome_and_about"
+            ("native_welcome_about_and_chat" if TEXT_CHAT_ENABLED else "native_welcome_and_about")
             if WELCOME_DELIVERY == "line_official_account"
-            else "webhook_welcome_and_about"
+            else ("webhook_welcome_about_and_chat" if TEXT_CHAT_ENABLED else "webhook_welcome_and_about")
         ),
         "greeting_enabled": True,
         "welcome_delivery": WELCOME_DELIVERY,
         "about_artist_enabled": True,
-        "ordinary_messages_enabled": False,
+        "ordinary_messages_enabled": TEXT_CHAT_ENABLED,
+        "chat_mode": ("ai_with_rules" if chat_engine.ai_configured() else "rules_only") if TEXT_CHAT_ENABLED else "off",
+        "ai_configured": chat_engine.ai_configured(),
+        "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "scheduled_broadcast": False,
     }, 200
 

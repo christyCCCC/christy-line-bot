@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 os.environ["LINE_CHANNEL_SECRET"] = "test-secret-only"
 os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = "test-token-only"
+os.environ["AI_CHAT_ENABLED"] = "false"
 app_module = importlib.import_module("app")
 
 
@@ -77,11 +78,14 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
             self.client.get("/status").json,
             {
                 "brand": "Christy P",
-                "mode": "native_welcome_and_about",
+                "mode": "native_welcome_about_and_chat",
                 "greeting_enabled": True,
                 "welcome_delivery": "line_official_account",
                 "about_artist_enabled": True,
-                "ordinary_messages_enabled": False,
+                "ordinary_messages_enabled": True,
+                "chat_mode": "rules_only",
+                "ai_configured": False,
+                "welcome_test_command": "測試歡迎",
                 "scheduled_broadcast": False,
             },
         )
@@ -90,7 +94,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
         with patch.object(app_module, "WELCOME_DELIVERY", "webhook"):
             self.assertEqual(
                 self.client.get("/status").json["mode"],
-                "webhook_welcome_and_about",
+                "webhook_welcome_about_and_chat",
             )
             self.assertEqual(
                 self.client.get("/status").json["welcome_delivery"], "webhook"
@@ -164,9 +168,11 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
 
     def test_unknown_and_five_other_menu_postbacks_remain_silent(self):
         other_menu_actions = (
+            "christy_p:artworks",
             "christy_p:works",
             "christy_p:shop",
             "christy_p:exhibitions",
+            "christy_p:stores",
             "christy_p:stockists",
             "christy_p:collaboration",
         )
@@ -180,7 +186,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 self.assertEqual(self._signed([event]).status_code, 200)
             outbound.assert_not_called()
 
-    def test_ordinary_text_and_sticker_messages_remain_silent(self):
+    def test_text_silent_when_disabled_and_stickers_remain_silent(self):
         events = [
             {
                 "type": "message",
@@ -197,8 +203,56 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 },
             },
         ]
-        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+        with patch.object(app_module, "TEXT_CHAT_ENABLED", False), patch.object(app_module.urllib.request, "urlopen") as outbound:
             self.assertEqual(self._signed(events).status_code, 200)
+            outbound.assert_not_called()
+
+    def test_each_typed_text_replies_once_and_hashes_session_identifier(self):
+        user_id = "U" + "1" * 32
+        with patch.object(app_module.chat_engine, "make_reply", return_value=["測試回覆"] ) as engine, patch.object(
+            app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()
+        ) as outbound:
+            for text in ("你好", "1", "99", "？", " "):
+                event = {"type": "message", "replyToken": "text-test", "source": {"userId": user_id}, "message": {"type": "text", "text": text}}
+                outbound.reset_mock()
+                self.assertEqual(self._signed([event]).status_code, 200)
+                outbound.assert_called_once()
+                self.assertEqual(json.loads(outbound.call_args.args[0].data)["messages"], [{"type": "text", "text": "測試回覆"}])
+                session_key = engine.call_args.args[1]
+                self.assertEqual(len(session_key), 64)
+                self.assertNotEqual(session_key, user_id)
+
+    def test_welcome_preview_uses_one_reply_call_and_exact_three_bubbles(self):
+        with patch.object(app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()) as outbound:
+            event = {"type": "message", "replyToken": "welcome-preview", "message": {"type": "text", "text": "測試歡迎"}}
+            self.assertEqual(self._signed([event]).status_code, 200)
+            outbound.assert_called_once()
+            texts = [m["text"] for m in json.loads(outbound.call_args.args[0].data)["messages"]]
+            self.assertEqual(len(texts), 3)
+            self.assertEqual("\n\n".join(texts), app_module.WELCOME_MESSAGE)
+            self.assertTrue(all(len(text) <= 500 for text in texts))
+
+    def test_chat_engine_failure_still_replies_with_nonempty_fallback(self):
+        with patch.object(app_module.chat_engine, "make_reply", side_effect=RuntimeError("internal")), patch.object(
+            app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()
+        ) as outbound:
+            event = {"type": "message", "replyToken": "fallback-test", "message": {"type": "text", "text": "test"}}
+            self.assertEqual(self._signed([event]).status_code, 200)
+            outbound.assert_called_once()
+            self.assertIn("自動回覆助手", json.loads(outbound.call_args.args[0].data)["messages"][0]["text"])
+
+    def test_text_without_token_does_not_invoke_chat_or_reply(self):
+        with patch.object(app_module.chat_engine, "make_reply") as engine, patch.object(app_module.urllib.request, "urlopen") as outbound:
+            event = {"type": "message", "message": {"type": "text", "text": "no token"}}
+            self.assertEqual(self._signed([event]).status_code, 200)
+            engine.assert_not_called()
+            outbound.assert_not_called()
+
+    def test_nontext_messages_remain_silent_with_chat_enabled(self):
+        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+            for message_type in ("sticker", "image", "video", "audio", "location", "file"):
+                event = {"type": "message", "replyToken": "unused", "message": {"type": message_type}}
+                self.assertEqual(self._signed([event]).status_code, 200)
             outbound.assert_not_called()
 
     def test_empty_verify_event(self):

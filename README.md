@@ -1,20 +1,33 @@
-# Christy P 官方 LINE：原生歡迎與藝術家介紹版
+# Christy P 官方 LINE：文字聊天測試版
 
-本版本保留簽章驗證的 LINE Webhook，**僅會對 `christy_p:about` postback 以 LINE reply API 回覆經核准的中英文藝術家介紹**；文案位於 `about_artist.txt`。這份檔案保留核准內容的原始段落順序，僅移除了 Markdown 標題前綴。一般文字、貼圖、未知 postback，以及其餘五格選單 postback 均維持靜默；沒有 AI 聊天、排程、廣播或 push 訊息。
+本版本開啟普通文字自動回覆，保留 LINE 原生雙語歡迎訊息與「認識 IP／官網」藝術家介紹。其餘五格 postback、貼圖／圖片／影片／音訊等非文字訊息仍不自動回覆。沒有每日廣播、排程、push、個資蒐集或舊品牌邏輯。
 
-預設 `WELCOME_DELIVERY=line_official_account`。因此 FollowEvent 僅會由 webhook 驗簽並回 `200`，**不會**從伺服器送出歡迎回覆；首次歡迎訊息須於 LINE 官方帳號後台（原生歡迎訊息）維護。`welcome_message.txt` 保留為核准的封存文案與選用 fallback。若明確設定 `WELCOME_DELIVERY=webhook`，才會在 FollowEvent 以 LINE reply API 回覆一則該檔案內容。
+## 回應規則
 
-## 六格選單
+每則有效的 LINE 文字事件（須有可用 reply token）都會進入回覆流程，包括純數字、符號、短句。LINE reply API 一個 token 只呼叫一次；通常一個文字框，只有歡迎预覽依原生後台限制分成三框。網路、LINE API 或 Render 休眠等外部條件仍可能導致送達失敗，不能把「已啟用」視為每則訊息實際已送達。
 
-| 位置 | 名稱 | 暫時行為 |
-|---|---|---|
-| 左上 | 認識藝術家 | 僅 `christy_p:about` 回覆 `about_artist.txt` |
-| 上中 | 作品系列 | 靜默 postback，待作品資料 |
-| 右上 | 周邊新品 | 靜默 postback，待發行品項與售價 |
-| 左下 | 展覽與檔期 | 靜默 postback，待公開活動日期 |
-| 下中 | 購買據點 | 靜默 postback，待藝廊／通路資訊 |
-| 右下 | 合作洽詢 | 靜默 postback，待正式合作方式 |
+- `0`、`help`、`幫助`、`選單`：文字功能指南。
+- `1`、`關於藝術家`、`藝術家介紹`：`about_artist.txt` 的核准全文。
+- `2`、`作品系列`、`萬物可愛論`：核心系列介紹，不憑作品標題杜撰故事。
+- `3`、`4`、`5`、`6`：分別說明周邊、公開展覽日期、購買據點、合作資料尚未提供／公告；不編造價格、日期、網址、Email 或表單。
+- 其他數字：詢問查詢意圖並提示輸入 `0`。
+- `測試歡迎`、`歡迎訊息`、`test welcome`、`welcome message`：只回傳給當前提問者，不是廣播。使用 `welcome_message.txt` 的核准全文，按中文及英文段落分為 255、318、376 字元三框，字句不刪改。
+- `清除對話`：僅清除本助手的短暫上下文，不代表刪除 LINE 或模型供應商紀錄。
 
-部署時設定 `LINE_CHANNEL_SECRET` 和 `LINE_CHANNEL_ACCESS_TOKEN` 環境變數；服務不讀取或儲存憑證。`GET /health` 回 `OK`。預設 `GET /status` 回報 `native_welcome_and_about`、`welcome_delivery: line_official_account`、`greeting_enabled: true` 與 `about_artist_enabled: true`；若設定 webhook fallback，則回報 `webhook_welcome_and_about` 與 `welcome_delivery: webhook`。狀態端點僅表達服務設定意圖，**不是 LINE 官方帳號後台實際原生歡迎訊息已啟用或成功送達的證明**。
+日常風格簡短、自然、帶輕巧調皮；作品與購買合作資訊採清楚克制語氣。助手不冒充 Christy P 本人、不提供私人聯絡方式、不建立客戶個資檔案、不使用舊的曖昧蒐集個資或土味情話模式。「可愛」是觀看方式，理解不等於合理化伤害。
 
-Webhook 的診斷日誌僅記錄事件類型與限定的錯誤狀態，絕不記錄 webhook payload、使用者 ID、reply token 或 access token。LINE 官方帳號的原生歡迎訊息及圖文選單由 LINE 管理；Flask 不會產生 rich menu 圖片。舊品牌程式與選單已另外封存並交付。若未來恢復其他回覆或排程，應依新品牌內容重新審核，**不要直接啟用舊版程式**。
+## AI 與備援
+
+`chat_engine.py` 先處理確定性指令與已核准資訊，其他日常文字才使用 AI。`system_prompt.txt` 是新品牌專用規則。沿用既有 Bot 的使用者自備 OpenAI 環境設定，預設模型 `gpt-4o-mini`；不得將 Manus Sandbox 的內建代理憑證或 `OPENAI_API_BASE` 複製到 Render。本程式只讀服務自己的 `OPENAI_API_KEY` 與選用 `OPENAI_BASE_URL`，後者預設官方 `https://api.openai.com/v1`。
+
+AI 呼叫有短超時與固定輸出上限，沒有工具或自動外部行動；失效／未設定時仍使用規則備援。`GET /status` 的 `ai_configured` 僅表示服務已配置 API key，並非成功模型回應或實際送達證明。聊天上下文只限服務記憶體中的匿名 session 雜湊，數量與時間有界；重啟後清空，不另存聊天內容或客户資料庫。
+
+## 設定與部署
+
+必需 `LINE_CHANNEL_SECRET`、`LINE_CHANNEL_ACCESS_TOKEN`。`TEXT_CHAT_ENABLED=true` 開啟文字；`AI_CHAT_ENABLED` 控制 AI；`WELCOME_DELIVERY=line_official_account` 為預設，FollowEvent 只驗簽後 ACK，不再次送歡迎。只有明確設 `WELCOME_DELIVERY=webhook` 才使用封存文字作程式歡迎 fallback。
+
+LINE 後台保持聊天 ON、歡迎訊息 ON、Webhook ON、回應時間 OFF、普通原生自動回應 OFF／手動聊天模式，以免舊原生回覆干擾。其他五格按鈕仍保持靜默；文字指令開放不等於這五格已開放。
+
+Render 服務 `srv-d8d8p1uk1jcs738o1vh0` 使用現有部署平台，autoDeploy 為 no，推送 GitHub 後必須手動 trigger deploy，核對 deployment live 與 `/status`。不要從舊 Git commits 部署舊品牌。正式 URL：`https://christy-line-bot.onrender.com`；Webhook `/callback`、健康 `/health`、狀態 `/status`。
+
+測試：`AI_CHAT_ENABLED=false python -m unittest -v`，禁止單元測試使用真實 LINE 或 AI 憑證。診斷只記錄事件類型及有限錯誤狀態，不記錄使用者 ID、訊息、reply token、API key 或原始 provider response。
