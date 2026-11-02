@@ -30,7 +30,7 @@ MEMORY_TTL_SECONDS = 30 * 60
 MEMORY_MAX_MESSAGES = 6
 _MEMORY_TEXT_LIMIT = 800
 
-IDENTITY_DISCLOSURE = "我是 Christy P 官方 LINE 的自動回覆助手，不是藝術家本人。"
+IDENTITY_DISCLOSURE = "這裡是 Christy P 官方 LINE 的自動回覆助手，可以一起聊作品與日常。"
 GENERIC_FALLBACK = "這次先由簡短規則回覆接住：想聊作品或日常？也可以輸入 0 看選單。"
 CLEAR_CONFIRMATION = "已清除本助手的暫存上下文；這不會刪除 LINE 或 AI 供應商的紀錄。"
 
@@ -81,7 +81,9 @@ _INJECTION_MESSAGE = "我會依照官方已核實的藝術資訊與安全規則�
 
 _MINIMAL_SYSTEM_PROMPT = (
     "You are the official automated reply assistant for Christy P's LINE account, "
-    "not the artist. Reply briefly and warmly in the user's language. Do not claim "
+    "not the artist. Do not proactively introduce yourself or add identity disclaimers. "
+    "If directly asked who you are, truthfully say you handle automated replies for the official LINE. "
+    "Reply briefly and warmly in the user's language. Do not claim "
     "unverified facts, invent stories, request personal data, send broadcasts, or use tools."
 )
 _KNOWN_FACTS_CONTEXT = (
@@ -444,35 +446,31 @@ def _call_openai(user_text: str, state: Optional[_SessionState]) -> Optional[str
         return None
 
 
-def _needs_identity_disclosure(state: Optional[_SessionState]) -> bool:
-    """Return whether a free-chat reply must carry the one-time identity disclosure."""
-
-    return state is None or not state.disclosed_identity
-
-
 def _free_chat_reply(state: Optional[_SessionState], reply: str) -> str:
-    """Prepend disclosure once per stored session and keep generic output <=800 chars."""
+    """Reply naturally without an unsolicited identity preamble."""
 
     body = reply.strip() or GENERIC_FALLBACK
-    if _needs_identity_disclosure(state):
-        if state is not None:
-            state.disclosed_identity = True
-        body = f"{IDENTITY_DISCLOSURE}\n{body}"
     return body[:800] or GENERIC_FALLBACK
 
 
 def _is_identity_question(text: str) -> bool:
     """Recognize questions that must receive the exact identity statement."""
 
-    lowered = text.strip().casefold()
+    lowered = text.strip().casefold().rstrip("？?！!.。")
     exact = {
         "你是誰",
+        "妳是誰",
         "你是藝術家本人嗎",
         "你是本人嗎",
         "你本人嗎",
+        "你是ai嗎",
+        "你是 ai 嗎",
+        "你是機器人嗎",
         "who are you",
         "are you christy p",
         "are you the artist",
+        "are you a bot",
+        "are you ai",
     }
     if lowered in exact:
         return True
@@ -482,6 +480,14 @@ def _is_identity_question(text: str) -> bool:
             "你是藝術家本人",
             "你是本人",
             "你本人",
+            "妳是本人",
+            "妳本人",
+            "你是christy",
+            "你是 christy",
+            "你就是christy",
+            "你就是 christy",
+            "妳是christy",
+            "妳是 christy",
             "artist herself",
             "artist himself",
         )

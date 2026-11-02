@@ -239,7 +239,10 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
             event = {"type": "message", "replyToken": "fallback-test", "message": {"type": "text", "text": "test"}}
             self.assertEqual(self._signed([event]).status_code, 200)
             outbound.assert_called_once()
-            self.assertIn("自動回覆助手", json.loads(outbound.call_args.args[0].data)["messages"][0]["text"])
+            reply = json.loads(outbound.call_args.args[0].data)["messages"][0]["text"]
+            self.assertIn("這次先用簡短回覆接住", reply)
+            self.assertNotIn("不是藝術家本人", reply)
+            self.assertNotIn("我是 Christy P", reply)
 
     def test_text_without_token_does_not_invoke_chat_or_reply(self):
         with patch.object(app_module.chat_engine, "make_reply") as engine, patch.object(app_module.urllib.request, "urlopen") as outbound:

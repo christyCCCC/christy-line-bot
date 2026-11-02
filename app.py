@@ -108,7 +108,7 @@ def reply_to_text(reply_token: str, text: str, source: dict) -> None:
         texts = chat_engine.make_reply(text, session_key)
     except Exception:
         logger.warning("LINE chat fallback: error_status=chat_unavailable")
-        texts = ["我是 Christy P 官方 LINE 的自動回覆助手。這次先用簡短回覆接住：輸入 0 可查看文字功能，或輸入「測試歡迎」查看歡迎訊息。"]
+        texts = ["這次先用簡短回覆接住：輸入 0 可查看文字功能，或輸入「測試歡迎」查看歡迎訊息。"]
     reply_with_messages(reply_token, texts)
 
 
