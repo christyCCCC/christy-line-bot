@@ -1,4 +1,5 @@
-"""Follow-only welcome behavior and silent-mode regression tests."""
+"""Native-welcome and about-artist webhook regression tests."""
+
 import base64
 import hashlib
 import hmac
@@ -6,76 +7,234 @@ import importlib
 import json
 import os
 import unittest
-from unittest.mock import patch, MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-os.environ['LINE_CHANNEL_SECRET'] = 'test-secret-only'
-os.environ['LINE_CHANNEL_ACCESS_TOKEN'] = 'test-token-only'
-app_module = importlib.import_module('app')
+os.environ["LINE_CHANNEL_SECRET"] = "test-secret-only"
+os.environ["LINE_CHANNEL_ACCESS_TOKEN"] = "test-token-only"
+app_module = importlib.import_module("app")
 
 
-class WelcomeWebhookTests(unittest.TestCase):
+APPROVED_ABOUT_ARTIST = """ABOUT THE ARTIST
+
+關於藝術家
+
+CHRISTY P
+
+Taiwanese Artist & Interdisciplinary Creator
+
+Christy P 是一位以人性觀察為核心的台灣藝術家與跨域創作者，現居高雄。她的創作游移於繪畫、視覺設計與敘事建構之間，關注人們如何隱藏、投射與理解自己的內在情緒。
+
+自幼接受專業美術訓練，繪畫很早便成為她理解自己與世界的語言。青少年時期，「眼睛」與「淚水」開始反覆出現在作品之中，逐漸發展為關於情緒、凝視與自我保護的視覺符號。
+
+此後，她投入視覺設計、品牌策略與創業，在感性直覺與理性結構之間，形成鮮明且具系統性的創作方法。對她而言，設計並非藝術的對立面，而是讓感受得以被準確傳遞的結構。
+
+她的作品融合美式塗鴉語彙、壓克力質地、超現實人物、簡化線條與鮮明互補色。神情平靜的女孩、不對稱的眼睛與黑色陪伴者，共同構成一個看似童真、卻帶有心理張力的世界，映照出人性中相互矛盾、卻同時存在的多重面貌。
+
+作品曾於台灣與韓國展出並獲獎。《萬物可愛論》是她目前的核心創作系列，也是她將多年藝術、設計、品牌與人生觀察重新匯聚後，建立的第一個完整創作體系。
+
+Christy P is a Taiwanese artist and interdisciplinary creator based in Kaohsiung, Taiwan. Her practice moves between painting, visual design, and narrative construction, exploring how people conceal, project, and make sense of their inner emotions.
+
+Formally trained in art from early childhood, she developed painting as a language through which to understand herself and the world. During adolescence, eyes and tears emerged as recurring motifs, gradually becoming visual symbols of emotion, perception, and self-protection.
+
+Her later work across visual design, brand strategy, and entrepreneurship led her to develop a practice that balances artistic intuition with structural clarity. For Christy P, design is not the opposite of art—it is the structure through which feeling can be communicated with precision.
+
+Her work brings together an American graffiti sensibility, acrylic textures, surreal figures, simplified lines, and vivid complementary colors. Composed girls, asymmetric eyes, and black companion creatures form a universe that appears playful yet carries an underlying psychological tension, reflecting the contradictory selves that coexist within us.
+
+Her work has been exhibited and recognized in Taiwan and Korea. EVERYTHING IS CUTE is her current central body of work—the first fully developed creative universe in which her experience across art, design, branding, and human observation converges."""
+
+
+class WelcomeAndAboutWebhookTests(unittest.TestCase):
     def setUp(self):
         self.client = app_module.app.test_client()
 
+    def _signed_payload(self, payload):
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        signature = base64.b64encode(
+            hmac.new(b"test-secret-only", body, hashlib.sha256).digest()
+        ).decode()
+        return self.client.post(
+            "/callback",
+            data=body,
+            headers={"X-Line-Signature": signature},
+            content_type="application/json",
+        )
+
     def _signed(self, events):
-        body = json.dumps({'events': events}, ensure_ascii=False).encode('utf-8')
-        signature = base64.b64encode(hmac.new(b'test-secret-only', body, hashlib.sha256).digest()).decode()
-        return self.client.post('/callback', data=body, headers={'X-Line-Signature': signature}, content_type='application/json')
+        return self._signed_payload({"events": events})
 
-    def test_health_and_status(self):
-        self.assertEqual(self.client.get('/health').status_code, 200)
-        self.assertEqual(self.client.get('/status').json, {
-            'brand': 'Christy P',
-            'mode': 'welcome_only',
-            'greeting_enabled': True,
-            'ordinary_messages_enabled': False,
-            'scheduled_broadcast': False,
-        })
-
-    def test_invalid_signature(self):
-        response = self.client.post('/callback', data=b'{"events":[]}', headers={'X-Line-Signature': 'bad'})
-        self.assertEqual(response.status_code, 400)
-
-    def test_text_and_postback_remain_silent(self):
-        with patch.object(app_module.urllib.request, 'urlopen') as outbound:
-            for event_type in ('message', 'postback'):
-                event = {'type': event_type, 'replyToken': 'unused', 'source': {'userId': 'U' + '0' * 32}}
-                if event_type == 'message':
-                    event['message'] = {'type': 'text', 'text': '探索更多'}
-                else:
-                    event['postback'] = {'data': 'christy_p:shop'}
-                self.assertEqual(self._signed([event]).status_code, 200)
-            outbound.assert_not_called()
-
-    def test_empty_verify_event(self):
-        with patch.object(app_module.urllib.request, 'urlopen') as outbound:
-            self.assertEqual(self._signed([]).status_code, 200)
-            outbound.assert_not_called()
-
-    def test_follow_without_token_does_not_send(self):
-        with patch.object(app_module.urllib.request, 'urlopen') as outbound:
-            self.assertEqual(self._signed([{'type': 'follow'}]).status_code, 200)
-            outbound.assert_not_called()
-
-    def test_follow_replies_once_with_exact_approved_message(self):
+    @staticmethod
+    def _successful_reply_connection():
         response = MagicMock()
         response.status = 200
         connection = MagicMock()
         connection.__enter__.return_value = response
-        with patch.object(app_module.urllib.request, 'urlopen', return_value=connection) as outbound:
-            self.assertEqual(self._signed([{'type': 'follow', 'replyToken': 'test-reply-token'}]).status_code, 200)
+        return connection
+
+    def test_health_and_default_native_welcome_status(self):
+        self.assertEqual(self.client.get("/health").status_code, 200)
+        self.assertEqual(
+            self.client.get("/status").json,
+            {
+                "brand": "Christy P",
+                "mode": "native_welcome_and_about",
+                "greeting_enabled": True,
+                "welcome_delivery": "line_official_account",
+                "about_artist_enabled": True,
+                "ordinary_messages_enabled": False,
+                "scheduled_broadcast": False,
+            },
+        )
+
+    def test_webhook_welcome_fallback_status(self):
+        with patch.object(app_module, "WELCOME_DELIVERY", "webhook"):
+            self.assertEqual(
+                self.client.get("/status").json["mode"],
+                "webhook_welcome_and_about",
+            )
+            self.assertEqual(
+                self.client.get("/status").json["welcome_delivery"], "webhook"
+            )
+
+    def test_invalid_signature(self):
+        response = self.client.post(
+            "/callback", data=b'{"events":[]}', headers={"X-Line-Signature": "bad"}
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_default_native_follow_acknowledges_without_outgoing_reply(self):
+        follow_event = {"type": "follow", "replyToken": "follow-reply-token"}
+        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+            self.assertEqual(self._signed([follow_event]).status_code, 200)
+            outbound.assert_not_called()
+
+    def test_webhook_fallback_follow_without_reply_token_does_not_send(self):
+        with patch.object(app_module, "WELCOME_DELIVERY", "webhook"), patch.object(
+            app_module.urllib.request, "urlopen"
+        ) as outbound:
+            self.assertEqual(self._signed([{"type": "follow"}]).status_code, 200)
+            outbound.assert_not_called()
+
+    def test_webhook_fallback_follow_replies_once_with_exact_archived_welcome(self):
+        archived_welcome = Path(app_module.__file__).with_name("welcome_message.txt").read_text(
+            encoding="utf-8"
+        ).strip()
+        with patch.object(app_module, "WELCOME_DELIVERY", "webhook"), patch.object(
+            app_module.urllib.request,
+            "urlopen",
+            return_value=self._successful_reply_connection(),
+        ) as outbound:
+            self.assertEqual(
+                self._signed([{"type": "follow", "replyToken": "test-reply-token"}]).status_code,
+                200,
+            )
             outbound.assert_called_once()
-            request = outbound.call_args.args[0]
-            self.assertEqual(request.full_url, 'https://api.line.me/v2/bot/message/reply')
-            data = json.loads(request.data)
-            self.assertEqual(data, {
-                'replyToken': 'test-reply-token',
-                'messages': [{'type': 'text', 'text': app_module.WELCOME_MESSAGE}],
-            })
-            self.assertIn('歡迎進入 Christy P 的藝術世界。', data['messages'][0]['text'])
-            self.assertIn('EVERYTHING IS CUTE turns toward the parts of ourselves we tend to hide', data['messages'][0]['text'])
-            self.assertIn('“I don’t make the world cute.\nI simply see the cute side of it.”', data['messages'][0]['text'])
+            outbound_request = outbound.call_args.args[0]
+            self.assertEqual(outbound_request.full_url, "https://api.line.me/v2/bot/message/reply")
+            self.assertEqual(
+                json.loads(outbound_request.data),
+                {
+                    "replyToken": "test-reply-token",
+                    "messages": [{"type": "text", "text": archived_welcome}],
+                },
+            )
+
+    def test_exact_about_postback_replies_once_with_full_approved_biography(self):
+        self.assertEqual(app_module.ABOUT_ARTIST_MESSAGE, APPROVED_ABOUT_ARTIST)
+        self.assertNotIn("#", app_module.ABOUT_ARTIST_MESSAGE)
+        with patch.object(
+            app_module.urllib.request,
+            "urlopen",
+            return_value=self._successful_reply_connection(),
+        ) as outbound:
+            event = {
+                "type": "postback",
+                "replyToken": "about-reply-token",
+                "postback": {"data": "christy_p:about"},
+            }
+            self.assertEqual(self._signed([event]).status_code, 200)
+            outbound.assert_called_once()
+            self.assertEqual(
+                json.loads(outbound.call_args.args[0].data),
+                {
+                    "replyToken": "about-reply-token",
+                    "messages": [{"type": "text", "text": APPROVED_ABOUT_ARTIST}],
+                },
+            )
+
+    def test_unknown_and_five_other_menu_postbacks_remain_silent(self):
+        other_menu_actions = (
+            "christy_p:works",
+            "christy_p:shop",
+            "christy_p:exhibitions",
+            "christy_p:stockists",
+            "christy_p:collaboration",
+        )
+        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+            for data in (*other_menu_actions, "christy_p:unknown", "unrelated:postback"):
+                event = {
+                    "type": "postback",
+                    "replyToken": "unused-reply-token",
+                    "postback": {"data": data},
+                }
+                self.assertEqual(self._signed([event]).status_code, 200)
+            outbound.assert_not_called()
+
+    def test_ordinary_text_and_sticker_messages_remain_silent(self):
+        events = [
+            {
+                "type": "message",
+                "replyToken": "unused-reply-token",
+                "message": {"type": "text", "text": "探索更多"},
+            },
+            {
+                "type": "message",
+                "replyToken": "unused-reply-token",
+                "message": {
+                    "type": "sticker",
+                    "packageId": "1",
+                    "stickerId": "1",
+                },
+            },
+        ]
+        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+            self.assertEqual(self._signed(events).status_code, 200)
+            outbound.assert_not_called()
+
+    def test_empty_verify_event(self):
+        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+            self.assertEqual(self._signed([]).status_code, 200)
+            outbound.assert_not_called()
+
+    def test_about_postback_without_reply_token_does_not_send_or_log_the_token(self):
+        event = {
+            "type": "postback",
+            "postback": {"data": "christy_p:about"},
+            "source": {"userId": "U" + "0" * 32},
+        }
+        with patch.object(app_module.urllib.request, "urlopen") as outbound, self.assertLogs(
+            "app", level="INFO"
+        ) as captured:
+            self.assertEqual(self._signed([event]).status_code, 200)
+            outbound.assert_not_called()
+        diagnostics = "\n".join(captured.output)
+        self.assertIn("event_type=postback", diagnostics)
+        self.assertIn("error_status=missing_reply_token", diagnostics)
+        self.assertNotIn("userId", diagnostics)
+        self.assertNotIn("U" + "0" * 32, diagnostics)
+
+    def test_malformed_payload_is_rejected_and_malformed_events_are_ignored(self):
+        with patch.object(app_module.urllib.request, "urlopen") as outbound:
+            self.assertEqual(
+                self._signed_payload({"events": "not-a-list"}).status_code,
+                400,
+            )
+            self.assertEqual(
+                self._signed([None, "not-an-event", {"type": None}]).status_code,
+                200,
+            )
+            outbound.assert_not_called()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
