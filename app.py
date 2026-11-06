@@ -108,7 +108,7 @@ def reply_to_text(reply_token: str, text: str, source: dict) -> None:
         texts = chat_engine.make_reply(text, session_key)
     except Exception:
         logger.warning("LINE chat fallback: error_status=chat_unavailable")
-        texts = ["這次先用簡短回覆接住：輸入 0 可查看文字功能，或輸入「測試歡迎」查看歡迎訊息。"]
+        texts = ["這句我暫時沒接好，再說一點，我換個角度接。"]
     reply_with_messages(reply_token, texts)
 
 
@@ -222,6 +222,7 @@ def status():
         "ordinary_messages_enabled": TEXT_CHAT_ENABLED,
         "chat_mode": ("ai_with_rules" if chat_engine.ai_configured() else "rules_only") if TEXT_CHAT_ENABLED else "off",
         "ai_configured": chat_engine.ai_configured(),
+        "chat_style": "responsive_warm_playful_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "scheduled_broadcast": False,
     }, 200

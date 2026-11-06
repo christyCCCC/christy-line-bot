@@ -85,6 +85,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "ordinary_messages_enabled": True,
                 "chat_mode": "rules_only",
                 "ai_configured": False,
+                "chat_style": "responsive_warm_playful_v2",
                 "welcome_test_command": "測試歡迎",
                 "scheduled_broadcast": False,
             },
@@ -240,7 +241,8 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
             self.assertEqual(self._signed([event]).status_code, 200)
             outbound.assert_called_once()
             reply = json.loads(outbound.call_args.args[0].data)["messages"][0]["text"]
-            self.assertIn("這次先用簡短回覆接住", reply)
+            self.assertIn("這句我暫時沒接好", reply)
+            self.assertNotIn("選單", reply)
             self.assertNotIn("不是藝術家本人", reply)
             self.assertNotIn("我是 Christy P", reply)
 

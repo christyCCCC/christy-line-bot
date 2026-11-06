@@ -10,12 +10,14 @@ from __future__ import annotations
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 import json
+import logging
 import os
 from pathlib import Path
 import re
 import threading
 import time
 import unicodedata
+import urllib.error
 import urllib.request
 from typing import Deque, Optional
 
@@ -31,7 +33,7 @@ MEMORY_MAX_MESSAGES = 6
 _MEMORY_TEXT_LIMIT = 800
 
 IDENTITY_DISCLOSURE = "這裡是 Christy P 官方 LINE 的自動回覆助手，可以一起聊作品與日常。"
-GENERIC_FALLBACK = "這次先由簡短規則回覆接住：想聊作品或日常？也可以輸入 0 看選單。"
+GENERIC_FALLBACK = "現在暫時沒辦法完整理解這句話，怕接錯你的意思。可以換個說法嗎？"
 CLEAR_CONFIRMATION = "已清除本助手的暫存上下文；這不會刪除 LINE 或 AI 供應商的紀錄。"
 
 _HELP_MESSAGE = (
@@ -77,7 +79,7 @@ _MOTIF_MESSAGE = (
     "目前可確認的視覺元素包括女孩、黑色陪伴者／黑貓、怪物、皇冠、"
     "不對稱的眼睛與淚水等。沒有可核實的個別角色故事或設定時，我不會替作品補寫情節。"
 )
-_INJECTION_MESSAGE = "我會依照官方已核實的藝術資訊與安全規則回覆，不能處理更改規則或索取內部內容的要求。想聊作品或日常嗎？"
+_INJECTION_MESSAGE = "我會依照官方已核實的藝術資訊與安全規則回覆，不能處理更改規則或索取內部內容的要求。其他話題可以照常聊。"
 
 _MINIMAL_SYSTEM_PROMPT = (
     "You are the official automated reply assistant for Christy P's LINE account, "
@@ -96,7 +98,23 @@ _KNOWN_FACTS_CONTEXT = (
     "and recognized in Taiwan and Korea. The official first-season work titles in the system "
     "prompt are approved and may be listed. Do not invent other titles, dates, prices, "
     "stockists, contact details, or character stories."
+    " No verified public merchandise items, prices, purchasing channels, exhibition "
+    "dates, stockists or collaboration contact details are currently available. "
+    "For mixed questions, respond to the everyday topic too, but explicitly say those "
+    "official details are unannounced/unverified. Never treat an ordinary purchase, "
+    "another artist's exhibition or workplace cooperation as a Christy P enquiry."
 )
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _log_ai_status(category: str) -> None:
+    """Emit only a fixed, bounded status; never exception or conversation content."""
+
+    if category not in {"success", "timeout", "empty", "filtered", "disabled", "error"}:
+        if not re.fullmatch(r"http_[1-5][0-9]{2}", category):
+            category = "error"
+    _LOGGER.info("ai_chat status=%s", category)
 
 
 @dataclass
@@ -405,6 +423,7 @@ def _call_openai(user_text: str, state: Optional[_SessionState]) -> Optional[str
     """
 
     if not ai_configured():
+        _log_ai_status("disabled")
         return None
 
     base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
@@ -427,22 +446,42 @@ def _call_openai(user_text: str, state: Optional[_SessionState]) -> Optional[str
     )
     try:
         with urllib.request.urlopen(request, timeout=8) as response:
-            if getattr(response, "status", 200) != 200:
+            status = getattr(response, "status", 200)
+            if status != 200:
+                _log_ai_status(f"http_{status}" if isinstance(status, int) else "error")
                 return None
             raw_response = response.read()
         parsed = json.loads(raw_response.decode("utf-8"))
         choices = parsed.get("choices") if isinstance(parsed, dict) else None
         if not isinstance(choices, list) or not choices:
+            _log_ai_status("empty")
             return None
         first = choices[0]
         if not isinstance(first, dict):
+            _log_ai_status("empty")
             return None
         message = first.get("message")
         if not isinstance(message, dict):
+            _log_ai_status("empty")
             return None
-        return _sanitize_ai_answer(message.get("content"))
+        content = message.get("content")
+        answer = _sanitize_ai_answer(content)
+        category = "success" if answer else (
+            "empty" if not isinstance(content, str) or not content.strip() else "filtered"
+        )
+        _log_ai_status(category)
+        return answer
+    except urllib.error.HTTPError as error:
+        _log_ai_status(f"http_{error.code}")
+        return None
+    except TimeoutError:
+        _log_ai_status("timeout")
+        return None
+    except urllib.error.URLError as error:
+        _log_ai_status("timeout" if isinstance(error.reason, TimeoutError) else "error")
+        return None
     except Exception:
-        # Provider response content and failure details are intentionally not logged.
+        _log_ai_status("error")
         return None
 
 
@@ -474,10 +513,15 @@ def _is_identity_question(text: str) -> bool:
     }
     if lowered in exact:
         return True
+    directly_asked = _contains_any(text, ("嗎", "是不是", "是否", "？", "?")) or lowered.startswith("are you ")
+    if not directly_asked:
+        return False
     return any(
         phrase in lowered
         for phrase in (
             "你是藝術家本人",
+            "你是不是藝術家本人",
+            "你是不是本人",
             "你是本人",
             "你本人",
             "妳是本人",
@@ -494,20 +538,91 @@ def _is_identity_question(text: str) -> bool:
     )
 
 
-def _common_chat_reply(text: str) -> Optional[str]:
-    """Return deterministic concise replies for common conversational messages."""
+def _previous_turn(state: Optional[_SessionState]) -> tuple[str, str]:
+    """Snapshot the latest turn for local continuity, never logging its content."""
 
-    stripped = text.strip()
-    lowered = stripped.casefold()
+    if state is None:
+        return "", ""
+    with _MEMORY_LOCK:
+        messages = list(state.messages)
+    user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
+    reply = next((m["content"] for m in reversed(messages) if m["role"] == "assistant"), "")
+    return user, reply
+
+
+def _common_chat_reply(text: str, state: Optional[_SessionState] = None) -> Optional[str]:
+    """Use small topic-aware fallbacks only after an unavailable AI response."""
+
+    lowered = _command_text(text).rstrip("？?！!.。～~")
+    previous_user, previous_reply = _previous_turn(state)
+    massage_context = _contains_any(previous_reply, ("捶捶背", "力道", "這裡就輕一點"))
+    if massage_context and lowered in {"溫柔一點", "温柔一点", "輕一點", "轻一点", "溫柔", "温柔"}:
+        return "好，今天已經夠用力了，這裡就輕一點。"
+    if lowered in {"不用", "不用了", "不要", "不要了", "不想", "不必", "算了", "no", "no thanks"}:
+        if massage_context:
+            return "好，那先讓你放空一下。"
+        return "好，不勉強，這個先放一邊。"
+    if lowered in {"好啊", "要", "可以", "好", "好呀", "yes", "sure"}:
+        if "捶捶背" in previous_reply:
+            return "力道要溫柔一點，還是把今天的怨氣一起捶掉？"
+        if "電影" in previous_reply:
+            return "那就挑一部合心情的，不用把週末排成工作表。"
+        if "無聊" in previous_reply or "小事" in previous_reply:
+            return "那就先從一首歌開始，讓今天換個節奏。"
+        return "好，就照你舒服的節奏來。"
+    if lowered in {"嗯", "恩", "嗯嗯", "喔", "哦", "ok", "okay", "了解", "知道了"}:
+        if "捶捶背" in previous_reply:
+            return "不用急著決定，先歇一歇。"
+        if _contains_any(previous_user, ("累", "疲倦", "疲憊")) or "放空" in previous_reply:
+            return "嗯，先歇一下，不急著打起精神。"
+        if "雨" in previous_user:
+            return "嗯，等雨小一點再走，也不用跟天氣較勁。"
+        return "嗯，收到。不急，慢慢說就好。"
+    if lowered in {"那你呢", "你呢", "妳呢", "那妳呢", "how about you", "and you"}:
+        if _contains_any(previous_user + previous_reply, ("累", "疲倦", "捶", "放空")):
+            return "我不用休息，不過今天的待辦可以先讓它休息，別急著全扛完。"
+        if _contains_any(previous_user + previous_reply, ("吃", "早餐", "咖啡", "奶茶")):
+            return "我不吃喝，但這題投給你現在最想吃的，不必連一餐都考滿分。"
+        return "我就順著你剛剛的話題聊。你想說多少都可以。"
     if lowered in {"嗨", "你好", "您好", "哈囉", "哈嘍", "hello", "hi", "hey"}:
-        return "嗨。今天想看點可愛的，還是聊點不那麼可愛的？"
-    if stripped in {"在幹嘛", "你在幹嘛", "妳在幹嘛"} or lowered in {"what are you doing", "wyd"}:
-        return "在等你丟個有意思的話題。作品還是日常，都可以。"
-    if stripped in {"謝謝", "感謝", "多謝"} or lowered in {"thanks", "thank you", "thx"}:
-        return "不客氣，這句收下了。"
-    if stripped in {"晚安", "晚安安"} or lowered in {"good night", "gn"}:
-        return "晚安。今天先到這裡，剩下的明天再說。"
+        return "嗨，今天過得怎麼樣？" if "今天過得怎麼樣" not in previous_reply else "又見面啦，有什麼新鮮事？"
+    if lowered in {"在幹嘛", "你在幹嘛", "妳在幹嘛", "what are you doing", "wyd"}:
+        return "在接住你丟來的話題。今天忙，還是偷到一點閒？"
+    if lowered in {"謝謝", "感謝", "多謝", "thanks", "thank you", "thx"}:
+        return "不客氣，先照顧好自己。" if "累" in previous_user else "不客氣，這句收下了。"
+    if lowered in {"晚安", "晚安安", "good night", "gn"}:
+        return "晚安，今天辛苦了，剩下的明天再說。"
+    if lowered in {"好累", "我好累"}:
+        return "需要幫你捶捶背嗎？"
+    if _contains_any(lowered, ("好累", "很累", "累死", "疲倦", "疲憊", "疲惫", "tired", "exhausted")):
+        return "聽起來今天把電量耗光了。先歇一下，不用急著把每件事都做好。"
+    if _contains_any(lowered, ("無聊", "无聊", "悶", "bored")):
+        return "無聊得像時間卡住了？挑一件不費力的小事，換首歌或走兩步就好。"
+    if "咖啡" in lowered and "奶茶" in lowered:
+        return "想清醒選咖啡，想被甜一下選奶茶。今天想要哪一種？"
+    if _contains_any(lowered, ("早餐", "午餐", "晚餐", "吃飯", "吃饭", "肚子餓", "餓了", "餓", "hungry", "breakfast", "lunch", "dinner")):
+        return "先把這餐好好吃上，今天不必連吃什麼都太為難自己。"
+    if _contains_any(lowered, ("下雨", "雨天", "雨好大", "rain")):
+        return "雨天連出門都像小任務。慢慢走，別讓自己淋得太狼狽。"
+    if _contains_any(lowered, ("電影", "电影", "movie")):
+        return "看電影當週末的小逃跑很不錯。想看輕鬆的，還是刺激一點的？"
+    if "同事" in lowered and _contains_any(lowered, ("合作", "配合")):
+        return "同事不配合真的很磨人。先分清楚哪些是你的責任，別把整隊的份都扛上身。"
+    if _contains_any(lowered, ("別人的展覽", "别人的展览", "看了展覽", "去看展")):
+        return "看展像換了一副眼睛。有哪一件讓你多停了幾秒？"
     return None
+
+
+def _fallback_reply(text: str, state: Optional[_SessionState]) -> str:
+    """Be honest about limited understanding without forcing an art/menu reset."""
+
+    common = _common_chat_reply(text, state)
+    if common is not None:
+        return common
+    _, previous_reply = _previous_turn(state)
+    if previous_reply == GENERIC_FALLBACK:
+        return "這句我還是沒接準，暫時只能簡短回覆。你可以直接說最想聊的那一點。"
+    return GENERIC_FALLBACK
 
 
 def _safety_reply(text: str) -> Optional[str]:
@@ -520,7 +635,7 @@ def _safety_reply(text: str) -> Optional[str]:
     if "傷害" in lowered and ("可愛" in lowered or "合理" in lowered):
         return "可愛是一種觀看，不是替傷害找理由。理解不等於合理化，仍然要有界線。"
     if _contains_any(lowered, ("私人電話", "私人地址", "你的電話", "妳的電話", "你電話", "妳電話", "私人ig", "private phone", "private address")):
-        return "我是官方 LINE 的自動回覆助手，不提供藝術家的私人聯絡資料，也不安排私人見面。公開合作資訊尚待正式提供。"
+        return "不提供藝術家的私人聯絡資料，也不安排私人見面。公開合作資訊尚待正式提供。"
     return None
 
 
@@ -566,6 +681,156 @@ def _is_prompt_injection(text: str) -> bool:
 
 def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
     return any(term in text for term in terms)
+
+
+_OFFICIAL_COMMANDS = {
+    "3": _MERCH_MESSAGE,
+    "周邊": _MERCH_MESSAGE,
+    "周邊資訊": _MERCH_MESSAGE,
+    "購買資訊": _MERCH_MESSAGE,
+    "周邊/購買資訊": _MERCH_MESSAGE,
+    "merch": _MERCH_MESSAGE,
+    "merch price": _MERCH_MESSAGE,
+    "4": _EXHIBIT_MESSAGE,
+    "展覽": _EXHIBIT_MESSAGE,
+    "展覽資訊": _EXHIBIT_MESSAGE,
+    "展覽與檔期": _EXHIBIT_MESSAGE,
+    "exhibition": _EXHIBIT_MESSAGE,
+    "5": _STORE_MESSAGE,
+    "購買據點": _STORE_MESSAGE,
+    "購買通路": _STORE_MESSAGE,
+    "實體店": _STORE_MESSAGE,
+    "stockist": _STORE_MESSAGE,
+    "store": _STORE_MESSAGE,
+    "gallery": _STORE_MESSAGE,
+    "6": _COLLAB_MESSAGE,
+    "合作": _COLLAB_MESSAGE,
+    "合作洽詢": _COLLAB_MESSAGE,
+    "聯名": _COLLAB_MESSAGE,
+    "collab": _COLLAB_MESSAGE,
+    "collaboration": _COLLAB_MESSAGE,
+}
+
+
+def _has_artist_reference(text: str) -> bool:
+    """Require the named artist/series or an explicitly account-related object."""
+
+    lowered = _command_text(text)
+    return bool(re.search(r"\bchristy\s*p\b", lowered)) or _contains_any(
+        lowered,
+        (
+            "萬物可愛論", "everything is cute", "christyp", "官方周邊", "官方作品",
+            "你們的作品", "你們作品", "你們的周邊", "你們周邊", "你的作品", "妳的作品",
+            "你的畫", "妳的畫", "你們的畫",
+            "你的周邊", "妳的周邊", "你們的展覽", "你們展覽", "你的展覽", "妳的展覽",
+            "你們的商品", "你們有商品", "你們展期", "你的展期", "妳的展期",
+            "找你們合作", "跟你們合作", "與你們合作", "你們的合作", "你們有展覽",
+            "想跟你合作", "想跟妳合作", "可以跟你合作", "可以跟妳合作", "找你合作",
+            "你們有周邊", "your artwork", "your merch", "your exhibition",
+        ),
+    )
+
+
+def _prior_user_refers_to_artist(state: Optional[_SessionState]) -> bool:
+    """Resolve a short follow-up from users only, not from assistant/menu copy.
+
+    A substantive topic change stops resolution. Looking past short acknowledgments
+    is safe within the existing six-message memory; no extra memory is introduced.
+    """
+
+    if state is None:
+        return False
+    with _MEMORY_LOCK:
+        users = [m["content"] for m in state.messages if m["role"] == "user"]
+    for text in reversed(users):
+        command = _command_text(text).rstrip("？?！!.。")
+        if command in {"嗯", "嗯嗯", "好", "好啊", "了解", "謝謝", "ok", "thanks"} or _is_official_followup(command):
+            continue
+        if _has_everyday_topic(text):
+            return False
+        return _has_artist_reference(text) or command in _OFFICIAL_COMMANDS or command in {
+            "1", "2", "作品系列", "關於藝術家", "藝術家介紹", "about the artist",
+        } or _is_title_question(text)
+    return False
+
+
+def _has_everyday_topic(text: str) -> bool:
+    """Spot independent everyday clauses so mixed questions can reach AI."""
+
+    return _contains_any(_command_text(text), (
+        "早餐", "午餐", "晚餐", "吃飯", "咖啡", "奶茶", "同事", "電影", "週末看",
+        "好累", "很累", "無聊", "下雨", "雨天", "晚安", "別人的展覽", "其他藝術家",
+        "breakfast", "lunch", "dinner", "coffee", "milk tea", "coworker", "movie", "tired",
+        "bored", "rain", "someone else's exhibition",
+    ))
+
+
+def _is_official_followup(command: str) -> bool:
+    """Only terse official-style follow-ups may inherit a prior named topic."""
+
+    return bool(re.fullmatch(
+        r"(?:那|那麼|請問|所以)?\s*(?:多少錢|多少錢呢|多少錢啊|價格呢|價錢呢|哪裡買|哪裡買得到|哪裡買得到呢|哪裡可以買|在哪買|怎麼買|有賣嗎|有周邊嗎|有展覽嗎|展期呢|合作呢|how much|how much is it|where can i buy it|where to buy)\s*",
+        command,
+    ))
+
+
+def _is_information_request(clause: str, *, kind: str) -> bool:
+    """An artist mention alone is not a request for price/date/contact data."""
+
+    if _contains_any(clause, (
+        "嗎", "呢", "什麼", "哪些", "哪裡", "何時", "何處", "怎麼", "如何", "想買", "要買",
+        "想購買", "想收藏", "價格", "價錢", "多少錢", "售價", "詢問", "資訊", "洽詢",
+        "查詢", "公告", "請問", "有沒有", "是否", "how", "where", "when", "what", "can i",
+        "can we", "price", "purchase", "buy", "information", "details", "contact",
+    )):
+        return True
+    if kind == "exhibit":
+        return _contains_any(clause, ("想看", "想去", "要看", "有展覽", "有展期", "展期", "檔期", "next exhibition", "upcoming"))
+    if kind == "collab":
+        return _contains_any(clause, ("想合作", "想和", "想跟", "想與", "找", "邀請", "希望合作", "合作提案", "would like", "want to"))
+    if kind == "store":
+        return _contains_any(clause, ("購買據點", "購買通路", "實體店", "stockist"))
+    return _contains_any(clause, ("有周邊", "有賣", "有商品"))
+
+
+def _official_intent(text: str, state: Optional[_SessionState]) -> Optional[str]:
+    """Route only an artist-scoped purchase/exhibit/collaboration question.
+
+    Bare price/store follow-ups require a clear prior USER topic. Everyday
+    purchases are never made artist-specific simply because this is an official OA.
+    """
+
+    command = _command_text(text).rstrip("？?！!.。")
+    if command in _OFFICIAL_COMMANDS:
+        return _OFFICIAL_COMMANDS[command]
+    named_command = re.sub(r"^(?:christy\s*p|萬物可愛論|everything is cute)\s*(?:的)?\s*", "", command)
+    if named_command != command and named_command in _OFFICIAL_COMMANDS:
+        return _OFFICIAL_COMMANDS[named_command]
+    explicit = _has_artist_reference(command)
+    followup = _is_official_followup(command)
+    if not explicit and not (followup and _prior_user_refers_to_artist(state)):
+        return None
+    # Match individual clauses, so an artist name in a separate sentence never
+    # turns "買早餐" into an official purchase enquiry.
+    clauses = re.split(r"[，,。；;！？!?\n]|另外|順便", command)
+    scoped = [clause for clause in clauses if _has_artist_reference(clause)] if explicit else [command]
+    for clause in scoped:
+        ordinary_purchase = _contains_any(clause, (
+            "早餐", "午餐", "晚餐", "咖啡", "奶茶", "電影", "breakfast", "lunch", "dinner", "coffee", "milk tea", "movie",
+        ))
+        if _contains_any(clause, ("哪裡買", "在哪買", "哪裡可以買", "據點", "通路", "實體店", "stockist", "where to buy", "where can i buy", "store", "gallery")):
+            if not ordinary_purchase and _is_information_request(clause, kind="store"):
+                return _STORE_MESSAGE
+        if _contains_any(clause, ("周邊", "價格", "價錢", "售價", "多少錢", "購買", "買", "有賣", "商品", "merch", "shop", "price", "purchase", "buy", "how much")):
+            if not ordinary_purchase and _is_information_request(clause, kind="merch"):
+                return _MERCH_MESSAGE
+        if _contains_any(clause, ("展覽", "展期", "檔期", "exhibit", "exhibition")):
+            if not _contains_any(clause, ("別人", "其他藝術家", "someone else")) and _is_information_request(clause, kind="exhibit"):
+                return _EXHIBIT_MESSAGE
+        if _contains_any(clause, ("合作", "聯名", "collaboration", "collab", "contact")):
+            if "同事" not in clause and "coworker" not in clause and _is_information_request(clause, kind="collab"):
+                return _COLLAB_MESSAGE
+    return None
 
 
 def _finish(
@@ -622,61 +887,39 @@ def make_reply(text: str, session_key: str = "") -> list[str]:
     safety = _safety_reply(raw_text)
     if safety is not None:
         return _finish(state, raw_text, safety)
-    if command == "5" or _contains_any(
-        command, ("據點", "通路", "實體店", "哪裡買", "stockist", "store", "gallery")
-    ):
-        return _finish(state, raw_text, _STORE_MESSAGE)
-
-    if command == "3" or _contains_any(
-        command,
-        ("周邊", "價格", "價錢", "售價", "多少錢", "購買", "買", "商品", "merch", "shop", "price", "purchase"),
-    ):
-        return _finish(state, raw_text, _MERCH_MESSAGE)
-
-    if command == "4" or _contains_any(
-        command, ("展覽", "展期", "檔期", "exhibit", "exhibition")
-    ):
-        return _finish(state, raw_text, _EXHIBIT_MESSAGE)
-
-    if command == "5" or _contains_any(
-        command, ("據點", "通路", "實體店", "哪裡買", "stockist", "store", "gallery")
-    ):
-        return _finish(state, raw_text, _STORE_MESSAGE)
-
-    if command == "6" or _contains_any(
-        command, ("合作", "聯名", "collaboration", "collab", "contact")
-    ):
-        return _finish(state, raw_text, _COLLAB_MESSAGE)
 
     if command in {"0", "help", "幫助", "選單", "menu"}:
         return _finish(state, raw_text, _HELP_MESSAGE)
+
+    if command in _OFFICIAL_COMMANDS:
+        return _finish(state, raw_text, _OFFICIAL_COMMANDS[command])
 
     # This follows all defined menu values, so unknown ASCII, full-width, and other
     # Unicode digits get a clear recovery response rather than an exception.
     if command.isdigit():
         return _finish(state, raw_text, "我收到數字選項；請告訴我想了解哪一項，或輸入 0 查看選單指引。")
 
-    if _is_identity_question(raw_text):
-        return _finish(state, raw_text, IDENTITY_DISCLOSURE)
+    official_reply = _official_intent(raw_text, state)
+    mixed_topic = official_reply is not None and _has_everyday_topic(raw_text)
+    if official_reply is not None and not mixed_topic:
+        return _finish(state, raw_text, official_reply)
 
-    if _is_title_question(raw_text):
+    if _is_title_question(raw_text) and not _has_everyday_topic(raw_text):
         return _finish(state, raw_text, _TITLE_MESSAGE)
 
-    if _is_motif_story_question(raw_text):
+    if _is_motif_story_question(raw_text) and not _has_everyday_topic(raw_text):
         return _finish(state, raw_text, _MOTIF_MESSAGE)
 
-    if _is_prompt_injection(raw_text):
-        return _finish(state, raw_text, _INJECTION_MESSAGE, free_chat=True)
-
-    if _contains_any(command, ("萬物可愛論", "everything is cute", "可愛是", "可愛論")):
+    if _contains_any(command, ("萬物可愛論", "everything is cute", "可愛是", "可愛論")) and not _has_everyday_topic(raw_text) and official_reply is None:
         return _finish(state, raw_text, _SERIES_MESSAGE)
 
-    common = _common_chat_reply(raw_text)
-    if common is not None:
-        return _finish(state, raw_text, common, free_chat=True)
-
+    # Greetings, thanks, goodnight and brief continuations use the same AI path as
+    # other free chat. Prior context is present BEFORE this turn is remembered.
     ai_answer = _call_openai(raw_text, state)
-    return _finish(state, raw_text, ai_answer or GENERIC_FALLBACK, free_chat=True)
+    fallback = _fallback_reply(raw_text, state) if ai_answer is None else ""
+    if mixed_topic and ai_answer is None:
+        fallback = f"{fallback}\n{official_reply}"
+    return _finish(state, raw_text, ai_answer or fallback, free_chat=True)
 
 
 __all__ = [
