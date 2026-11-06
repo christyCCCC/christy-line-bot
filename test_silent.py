@@ -88,6 +88,9 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "chat_style": "responsive_warm_playful_v2",
                 "welcome_test_command": "測試歡迎",
                 "scheduled_broadcast": False,
+                "cards_version": "artist_works_bilingual_v1",
+                "artist_cards_count": 7,
+                "artwork_cards_count": 10,
             },
         )
 
@@ -159,17 +162,14 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
             }
             self.assertEqual(self._signed([event]).status_code, 200)
             outbound.assert_called_once()
-            self.assertEqual(
-                json.loads(outbound.call_args.args[0].data),
-                {
-                    "replyToken": "about-reply-token",
-                    "messages": [{"type": "text", "text": APPROVED_ABOUT_ARTIST}],
-                },
-            )
+            payload = json.loads(outbound.call_args.args[0].data)
+            self.assertEqual(payload["replyToken"], "about-reply-token")
+            self.assertEqual([m["type"] for m in payload["messages"]], ["image", "image", "text"])
+            self.assertEqual(payload["messages"][-1]["text"].rstrip("\n"), APPROVED_ABOUT_ARTIST)
+            self.assertIn("quickReply", payload["messages"][-1])
 
-    def test_unknown_and_five_other_menu_postbacks_remain_silent(self):
+    def test_unknown_and_four_pending_menu_postbacks_remain_silent(self):
         other_menu_actions = (
-            "christy_p:artworks",
             "christy_p:works",
             "christy_p:shop",
             "christy_p:exhibitions",
@@ -213,7 +213,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
         with patch.object(app_module.chat_engine, "make_reply", return_value=["測試回覆"] ) as engine, patch.object(
             app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()
         ) as outbound:
-            for text in ("你好", "1", "99", "？", " "):
+            for text in ("你好", "99", "？", " "):
                 event = {"type": "message", "replyToken": "text-test", "source": {"userId": user_id}, "message": {"type": "text", "text": text}}
                 outbound.reset_mock()
                 self.assertEqual(self._signed([event]).status_code, 200)

@@ -273,6 +273,12 @@ def _remember(state: Optional[_SessionState], user_text: str, reply: str) -> Non
         state.last_seen = time.time()
 
 
+def remember_gallery_context(session_key: str, request_text: str, reply_text: str) -> None:
+    """Remember one delivered gallery turn using the same bounded anonymous memory."""
+    state = _get_session(session_key)
+    _remember(state, "Christy P 圖文介紹：" + request_text, reply_text)
+
+
 def _ai_enabled_by_environment() -> bool:
     """Respect explicit deployment kill switches for optional AI replies."""
 

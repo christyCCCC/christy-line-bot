@@ -1,6 +1,7 @@
-"""Christy P LINE webhook: native welcome, artist biography, and text chat.
+"""Christy P LINE webhook: native welcome, bilingual image gallery, and text chat.
 
-Every postback other than ``christy_p:about`` remains silent. This service
+Only approved artist/works gallery postbacks reply. The four pending menu
+sections remain silent. This service
 does not schedule, push, or broadcast messages.
 """
 
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from flask import Flask, abort, request
 import chat_engine
+import gallery_cards
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -65,9 +67,29 @@ def reply_with_messages(reply_token: str, texts: list[str]) -> None:
     """Use LINE's one-time reply token once, with up to five text bubbles."""
     if not texts or len(texts) > 5 or any(not isinstance(t, str) or not t.strip() or len(t) > 5000 for t in texts):
         raise RuntimeError("Invalid outbound text messages")
+    reply_with_message_objects(reply_token, [{"type": "text", "text": text} for text in texts])
+
+
+def reply_with_message_objects(reply_token: str, messages: list[dict]) -> None:
+    """Reply once with approved text/image objects; never push or broadcast."""
+    if not messages or len(messages) > 5:
+        raise RuntimeError("Invalid outbound message count")
+    for message in messages:
+        if not isinstance(message, dict):
+            raise RuntimeError("Invalid outbound message")
+        if message.get("type") == "text":
+            text = message.get("text")
+            if not isinstance(text, str) or not text.strip() or len(text.encode("utf-16-le")) // 2 > 5000:
+                raise RuntimeError("Invalid outbound text")
+        elif message.get("type") == "image":
+            prefix = "https://christy-line-bot.onrender.com/static/gallery/"
+            if any(not isinstance(message.get(key), str) or not message[key].startswith(prefix) for key in ("originalContentUrl", "previewImageUrl")):
+                raise RuntimeError("Invalid outbound image URL")
+        else:
+            raise RuntimeError("Unsupported outbound message type")
     payload = {
         "replyToken": reply_token,
-        "messages": [{"type": "text", "text": text} for text in texts],
+        "messages": messages,
     }
     outbound = urllib.request.Request(
         "https://api.line.me/v2/bot/message/reply",
@@ -94,16 +116,35 @@ def reply_to_follow(reply_token: str) -> None:
 
 
 def reply_to_about_artist(reply_token: str) -> None:
-    """Send the approved bilingual artist biography for its exact postback."""
-    reply_with_text(reply_token, ABOUT_ARTIST_MESSAGE)
+    """Send artist images and the unchanged approved bilingual biography."""
+    objects = gallery_cards.resolve_postback(ABOUT_ARTIST_POSTBACK)
+    if objects:
+        reply_with_message_objects(reply_token, objects)
+    else:
+        reply_with_text(reply_token, ABOUT_ARTIST_MESSAGE)
 
 
-def reply_to_text(reply_token: str, text: str, source: dict) -> None:
-    """Reply to a typed text; retain only a salted anonymous memory key."""
+def anonymous_session_key(source: dict) -> str:
+    """Create the same anonymous memory key for text and gallery postbacks."""
     user_id = source.get("userId", "")
     context_id = source.get("groupId") or source.get("roomId") or "private"
     raw_key = str(context_id) + ":" + str(user_id)
-    session_key = hmac.new(CHANNEL_SECRET.encode(), raw_key.encode(), hashlib.sha256).hexdigest() if user_id else ""
+    return hmac.new(CHANNEL_SECRET.encode(), raw_key.encode(), hashlib.sha256).hexdigest() if user_id else ""
+
+
+def reply_to_gallery(reply_token: str, objects: list[dict], session_key: str, request_text: str) -> None:
+    reply_with_message_objects(reply_token, objects)
+    context = "\n\n".join(message["text"] for message in objects if message.get("type") == "text")
+    chat_engine.remember_gallery_context(session_key, request_text, context)
+
+
+def reply_to_text(reply_token: str, text: str, source: dict) -> None:
+    """Use direct bilingual gallery routes first, then natural AI conversation."""
+    session_key = anonymous_session_key(source)
+    objects = gallery_cards.resolve_text(text, session_key)
+    if objects:
+        reply_to_gallery(reply_token, objects, session_key, text)
+        return
     try:
         texts = chat_engine.make_reply(text, session_key)
     except Exception:
@@ -196,8 +237,13 @@ def callback():
             continue
 
         postback = event.get("postback")
-        if isinstance(postback, dict) and postback.get("data") == ABOUT_ARTIST_POSTBACK:
-            send_event_reply(event, event_type, reply_to_about_artist)
+        if not isinstance(postback, dict) or not isinstance(postback.get("data"), str):
+            continue
+        source = event.get("source")
+        session_key = anonymous_session_key(source if isinstance(source, dict) else {})
+        objects = gallery_cards.resolve_postback(postback["data"], session_key)
+        if objects:
+            send_event_reply(event, event_type, lambda token: reply_to_gallery(token, objects, session_key, postback["data"]))
 
     return "OK", 200
 
@@ -225,6 +271,7 @@ def status():
         "chat_style": "responsive_warm_playful_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "scheduled_broadcast": False,
+        **gallery_cards.content_status(),
     }, 200
 
 
