@@ -46,6 +46,7 @@ _ZH_MAP = str.maketrans({
     "讲": "講", "获": "獲", "来": "來", "顾": "顧", "题": "題",
     "块": "塊", "颠": "顛", "异": "異", "无": "無", "尽": "盡",
     "梦": "夢", "伤": "傷", "拥": "擁", "护": "護", "恶": "惡",
+    "帮": "幫", "烦": "煩", "随": "隨", "荐": "薦", "张": "張", "绘": "繪",
 })
 _STOP_COMMANDS = {
     "不用了", "停止介紹", "不看了", "回到聊天", "清除對話", "不要介紹了",
@@ -357,16 +358,49 @@ def _is_stop(text: str) -> bool:
     if text in _STOP_COMMANDS or _compact(text) in _STOP_COMMANDS:
         return True
     # Explicit rejection of gallery activity, not an incidental negative artwork title.
-    if re.search(r"(?:不要|不想|不用|不需要|不必|別|不願|沒有要|沒有想|先不).*(?:介紹|藝術家|作品|繼續|認識|了解|看圖)", text):
+    if re.search(r"(?:不要|不想|不用|不需要|不必|別|不願|沒有要|沒有想|先不).*(?:介紹|推薦|藝術家|作品|畫作|你的畫|妳的畫|繼續|認識|了解|看圖)", text):
         return True
     return bool(re.search(r"(?:don't|do not|not interested|no need|stop).*(?:artist|artwork|introduc|gallery|show|see)", text))
+
+
+def _natural_request(text: str) -> str:
+    """Normalize polite request framing, not arbitrary words inside a sentence."""
+    if not re.search(r"[\u4e00-\u9fff]", text):
+        return re.sub(r"^(?:(?:please|can you|could you|would you|will you)\s+)+", "", text)
+    body = _compact(text)
+    prefix = re.compile(r"^(?:麻煩你|麻煩妳|麻煩|請問|可不可以|能不能|可以|能否|請|幫我|替我|給我|我想要|我想|那麼|那|(?:你|妳)(?!的|是))")
+    for _ in range(10):
+        match = prefix.match(body)
+        if not match:
+            break
+        body = body[match.end():]
+    return re.sub(r"(?:看看|看一下|好嗎|可以嗎|嗎|呢|吧|喔|哦|啦|啊)+$", "", body)
+
+
+def _sample_work_request(text: str, state: Optional[dict], content: _Content) -> Optional[int]:
+    """A request for one unspecified painting opens a real approved example."""
+    compact = _compact(text)
+    chinese = re.fullmatch(
+        r"(?:隨便|隨機|任選)?(?:介紹|推薦|挑|挑選|選|看看|看|帶我看)(?:一下)?"
+        r"(?:隨便|隨機)?(?:一(?:張|幅|件|個)|任一(?:張|幅|件)|這(?:張|幅|件)|那(?:張|幅|件))"
+        r"(?:你們的|你的|妳的|christyp的)?(?:作品|畫作|畫|繪畫作品)", compact,
+    )
+    english = re.fullmatch(
+        r"(?:introduce|recommend|show me|tell me about|pick|choose) (?:a|one|any|a random) "
+        r"(?:(?:of )?your )?(?:artwork|painting|work|piece)(?: for me)?", text,
+    )
+    if not (chinese or english) or not content.works:
+        return None
+    if re.search(r"這(?:張|幅|件)|那(?:張|幅|件)", compact) and state and state['kind'] == 'work' and state['index'] in content.works:
+        return state['index']
+    return min(content.works)
 
 
 def _is_about(text: str) -> bool:
     compact = _compact(text)
     if compact in {"1", "關於藝術家", "藝術家介紹", "藝術家故事", "關於christyp", "christyp是誰", "誰是christyp", "這位藝術家是誰"}:
         return True
-    if re.fullmatch(r"(?:我想知道|想知道|請問)?(?:christyp|這位藝術家|藝術家)是誰(?:嗎|呢)?", compact):
+    if re.fullmatch(r"(?:我想知道|想知道|知道|請問)?(?:christyp|這位藝術家|藝術家)是誰(?:嗎|呢)?", compact):
         return True
     if re.fullmatch(
         r"(?:請|可以|能不能|可不可以|我可以|我想要|我想|想要|想)?(?:請)?"
@@ -384,12 +418,12 @@ def _is_about(text: str) -> bool:
 
 def _is_catalog(text: str) -> bool:
     compact = _compact(text)
-    if compact in {"2", "作品系列", "作品介紹", "作品目錄", "萬物可愛論", "everythingiscute"}:
+    if compact in {"2", "作品", "畫作", "作品集", "繪畫作品", "作品系列", "作品介紹", "作品目錄", "萬物可愛論", "everythingiscute"}:
         return True
     if re.fullmatch(
         r"(?:請|可以|能不能|可不可以|我想要|我想|想要|想)?(?:請)?"
         r"(?:看|看看|了解|介紹|認識)(?:一下)?"
-        r"(?:christyp的)?[《〈「『]?(?:作品|作品系列|作品目錄|萬物可愛論)[》〉」』]?(?:一下)?(?:嗎|呢|吧)?", compact,
+        r"(?:christyp的|你們的|你的|妳的)?[《〈「『]?(?:作品|畫作|作品集|作品系列|作品目錄|萬物可愛論)[》〉」』]?(?:一下)?(?:嗎|呢|吧)?", compact,
     ):
         return True
     return bool(re.fullmatch(
@@ -401,11 +435,11 @@ def _is_catalog(text: str) -> bool:
 
 def _work_request(text: str, state: Optional[dict], content: _Content) -> Optional[int]:
     compact = _compact(text)
-    ordinal = re.fullmatch(r"(?:請)?(?:介紹|想看|我想看|看看)?第(一|二|三|四|五|六|七|八|九|十)件(?:作品)?", compact)
+    ordinal = re.fullmatch(r"(?:請)?(?:介紹|想看|我想看|看看|看)?第(一|二|三|四|五|六|七|八|九|十)件(?:作品)?", compact)
     if ordinal:
         index = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}[ordinal.group(1)]
         return index if index in content.works else None
-    match = re.fullmatch(r"(?:請)?(?:介紹|想看|我想看|看看)?(?:第0*([0-9]+)件(?:作品)?|作品0*([0-9]+)|work0*([0-9]+))", compact)
+    match = re.fullmatch(r"(?:請)?(?:介紹|想看|我想看|看看|看)?(?:第0*([0-9]+)件(?:作品)?|作品0*([0-9]+)|work0*([0-9]+))", compact)
     if match:
         digits = next(group for group in match.groups() if group is not None).lstrip("0") or "0"
         if len(digits) > 2:
@@ -414,7 +448,7 @@ def _work_request(text: str, state: Optional[dict], content: _Content) -> Option
         return index if index in content.works else None
     candidate = text
     explicit = False
-    chinese = re.match(r"^(?:請)?(?:介紹|我想看|想看|我想了解|想了解|看看)(?:一下)?(?:作品)?\s*", candidate)
+    chinese = re.match(r"^(?:請)?(?:介紹|我想看|想看|我想了解|想了解|看看|看)(?:一下)?(?:作品)?\s*", candidate)
     if chinese:
         candidate, explicit = candidate[chinese.end():], True
     elif candidate.startswith("作品"):
@@ -426,7 +460,7 @@ def _work_request(text: str, state: Optional[dict], content: _Content) -> Option
     candidate = _norm(candidate.strip(" 《》〈〉「」『』\""))
     in_works = bool(state and state["kind"] == "work")
     for index, row in sorted(content.works.items()):
-        if candidate in {_norm(row["title_zh"]), _norm(row["title_en"])}:
+        if _compact(candidate) in {_compact(_norm(row["title_zh"])), _compact(_norm(row["title_en"]))}:
             if candidate in _CONTEXT_TITLES and not (explicit or in_works):
                 return None
             if candidate in _DAILY_TITLES and not explicit:
@@ -473,16 +507,20 @@ def resolve_text(text: str, session_key: str = "") -> Optional[list[dict]]:
             _clear(session_key)
             return None
         content = _load_content()
-        if _is_about(normalized):
+        requested = _natural_request(normalized)
+        if _is_about(requested):
             return _respond("about", None, session_key, content)
-        if _is_catalog(normalized):
+        sample = _sample_work_request(requested, state, content)
+        if sample is not None:
+            return _respond("work", sample, session_key, content)
+        if _is_catalog(requested):
             return _respond("catalog", None, session_key, content)
-        if normalized in _NEXT | _PREV:
-            return _navigate(state, normalized in _NEXT, session_key, content) if state else None
-        index = _work_request(normalized, state, content)
+        if requested in _NEXT | _PREV:
+            return _navigate(state, requested in _NEXT, session_key, content) if state else None
+        index = _work_request(requested, state, content)
         if index is not None:
             return _respond("work", index, session_key, content)
-        key = _artist_question(normalized, state)
+        key = _artist_question(requested, state)
         if key is not None:
             return _respond("artist", key, session_key, content)
         _clear(session_key)

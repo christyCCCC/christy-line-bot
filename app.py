@@ -133,6 +133,7 @@ def anonymous_session_key(source: dict) -> str:
 
 
 def reply_to_gallery(reply_token: str, objects: list[dict], session_key: str, request_text: str) -> None:
+    logger.info("LINE gallery prepared: images=%s messages=%s", sum(message.get("type") == "image" for message in objects), len(objects))
     reply_with_message_objects(reply_token, objects)
     context = "\n\n".join(message["text"] for message in objects if message.get("type") == "text")
     chat_engine.remember_gallery_context(session_key, request_text, context)
@@ -269,6 +270,7 @@ def status():
         "chat_mode": ("ai_with_rules" if chat_engine.ai_configured() else "rules_only") if TEXT_CHAT_ENABLED else "off",
         "ai_configured": chat_engine.ai_configured(),
         "chat_style": "responsive_warm_playful_v2",
+        "gallery_trigger_version": "natural_requests_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "scheduled_broadcast": False,
         **gallery_cards.content_status(),

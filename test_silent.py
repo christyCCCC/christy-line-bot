@@ -86,6 +86,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "chat_mode": "rules_only",
                 "ai_configured": False,
                 "chat_style": "responsive_warm_playful_v2",
+                "gallery_trigger_version": "natural_requests_v2",
                 "welcome_test_command": "測試歡迎",
                 "scheduled_broadcast": False,
                 "cards_version": "artist_works_bilingual_v1",
