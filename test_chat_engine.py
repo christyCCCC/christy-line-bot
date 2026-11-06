@@ -47,19 +47,24 @@ class ChatEngineTests(unittest.TestCase):
         self.provider.side_effect = None
         self.provider.return_value = self._response_connection({"choices": [{"message": {"content": content}}]})
 
-    def test_approved_welcome_is_exact_three_bubble_preview(self) -> None:
-        approved = Path(chat_engine.WELCOME_FILE).read_text(encoding="utf-8").strip()
+    def test_approved_welcome_is_exact_one_chinese_bubble_preview(self) -> None:
+        approved_file = Path(chat_engine.__file__).with_name("welcome_message_zh.txt")
+        self.assertEqual(chat_engine.WELCOME_FILE, approved_file)
+        approved = approved_file.read_text(encoding="utf-8").strip()
         reply = chat_engine.make_reply("測試歡迎", "welcome-session")
-        self.assertEqual(len(reply), 3)
-        self.assertEqual([len(part) for part in reply], [255, 318, 376])
+        self.assertEqual(len(reply), 1)
+        self.assertEqual([len(part) for part in reply], [255])
         self.assertTrue(all(0 < len(part) <= 500 for part in reply))
-        self.assertEqual("\n\n".join(reply), approved)
+        self.assertEqual(reply, [approved])
+        self.assertNotRegex(approved.replace("Christy P", ""), r"[A-Za-z]")
         for route in ("歡迎訊息", "test welcome", "ｗｅｌｃｏｍｅ　ｍｅｓｓａｇｅ"):
             self.assertEqual(chat_engine.make_reply(route, "welcome-two"), reply)
         self.provider.assert_not_called()
 
     def test_about_routes_return_the_full_approved_file(self) -> None:
-        approved = Path(chat_engine.ABOUT_FILE).read_text(encoding="utf-8").strip()
+        approved_file = Path(chat_engine.__file__).with_name("about_artist_zh.txt")
+        self.assertEqual(chat_engine.ABOUT_FILE, approved_file)
+        approved = approved_file.read_text(encoding="utf-8").strip()
         for route in ("1", "１", "關於藝術家", "藝術家介紹", "about the artist"):
             self.assertEqual(chat_engine.make_reply(route, f"about-{route}"), [approved])
         self.provider.assert_not_called()
@@ -103,8 +108,9 @@ class ChatEngineTests(unittest.TestCase):
         for fact in ("不是裝飾", "不是替傷害開脫", "觀看的方法"):
             self.assertIn(fact, series)
         title_reply = chat_engine.make_reply("有哪些作品名稱？", "titles")[0]
-        for fact in ("12 件作品", "DON’T LOOK AT ME／先別看我", "MONSTER NEEDS LOVE／怪物也需要愛", "尺寸與價格尚不能自行補充"):
+        for fact in ("12 件作品", "先別看我", "怪物也需要愛", "尺寸與價格尚不能自行補充"):
             self.assertIn(fact, title_reply)
+        self.assertNotRegex(series + title_reply, r"[A-Za-z]")
         self.assertIn("不會替作品補寫情節", chat_engine.make_reply("黑貓有什麼故事設定？")[0])
         self.provider.assert_not_called()
 

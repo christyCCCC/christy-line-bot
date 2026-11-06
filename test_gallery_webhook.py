@@ -1,4 +1,4 @@
-"""Bilingual gallery webhook integration; no real network or LINE delivery."""
+"""Chinese gallery webhook integration; no real network or LINE delivery."""
 import base64
 import hashlib
 import hmac
@@ -6,6 +6,7 @@ import importlib
 import json
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 os.environ['LINE_CHANNEL_SECRET'] = 'test-secret-only'
@@ -15,6 +16,13 @@ app_module = importlib.import_module('app')
 
 
 class GalleryWebhookIntegrationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        root = Path(__file__).resolve().parent
+        cls.works = {int(row['id']): row for row in json.loads((root / 'artworks_catalog.json').read_text(encoding='utf-8'))}
+        with (root / 'about_artist_zh.txt').open(encoding='utf-8', newline='') as handle:
+            cls.about_chinese = handle.read()
+
     def setUp(self):
         self.client = app_module.app.test_client()
         self.uid = 'U' + '9' * 32
@@ -40,10 +48,14 @@ class GalleryWebhookIntegrationTests(unittest.TestCase):
             net.assert_called_once()
             messages = json.loads(net.call_args.args[0].data)['messages']
             self.assertEqual([m['type'] for m in messages], ['image', 'image', 'text'])
+            self.assertEqual(messages[0]['originalContentUrl'], app_module.gallery_cards._IMAGE_BASE + 'artist_cover.jpg')
+            self.assertEqual(messages[1]['originalContentUrl'], app_module.gallery_cards._IMAGE_BASE + 'artist_who.jpg')
+            self.assertEqual(messages[-1]['text'], self.about_chinese)
             self.assertEqual(messages[-1]['text'].rstrip('\n'), app_module.ABOUT_ARTIST_MESSAGE)
+            self.assertNotRegex(messages[-1]['text'].replace('Christy P', '').replace('CHRISTY P', ''), '[A-Za-z]')
             self.assertIn('quickReply', messages[-1])
 
-    def test_ten_works_each_has_own_image_bilingual_reading_and_no_ai(self):
+    def test_ten_works_each_has_own_image_chinese_reading_and_no_ai(self):
         with patch.object(app_module.chat_engine, 'make_reply') as ai, patch.object(app_module.urllib.request, 'urlopen', return_value=self.connection()) as net:
             for index in range(1, 11):
                 with self.subTest(index=index):
@@ -53,9 +65,19 @@ class GalleryWebhookIntegrationTests(unittest.TestCase):
                     messages = json.loads(net.call_args.args[0].data)['messages']
                     self.assertEqual(messages[0]['type'], 'image')
                     self.assertTrue(messages[0]['originalContentUrl'].endswith(f'work_{index:02}.jpg'))
-                    text = '\n'.join(m['text'] for m in messages if m['type'] == 'text')
+                    row = self.works[index]
+                    self.assertEqual(messages[0]['originalContentUrl'], app_module.gallery_cards._IMAGE_BASE + row['image_filename'])
+                    self.assertEqual(messages[0]['previewImageUrl'], messages[0]['originalContentUrl'])
+                    text = ''.join(m['text'] for m in messages if m['type'] == 'text')
                     self.assertRegex(text, '[\u4e00-\u9fff]')
-                    self.assertRegex(text, '[A-Za-z]')
+                    self.assertNotRegex(text, '[A-Za-z]')
+                    self.assertEqual(text, (
+                        f"作品 {index}｜{row['title_zh']}\n\n"
+                        f"原句\n{row['quote_zh']}\n\n"
+                        f"作品導讀\n{row['reading_zh']}"
+                    ))
+                    for field in ('title_en', 'quote_en', 'reading_en'):
+                        self.assertNotIn(row[field], text)
                     self.assertIn('quickReply', messages[-1])
                     self.assertTrue(all(len(m['text'].encode('utf-16-le')) // 2 <= 5000 for m in messages if m['type'] == 'text'))
             ai.assert_not_called()
@@ -95,7 +117,11 @@ class GalleryWebhookIntegrationTests(unittest.TestCase):
         self.assertEqual(len(key), 64)
         messages = list(app_module.chat_engine._get_session(key).messages)
         self.assertIn('Christy P 圖文介紹', messages[-2]['content'])
-        self.assertIn('LOVE BITES', messages[-1]['content'])
+        self.assertIn(self.works[6]['title_zh'], messages[-1]['content'])
+        self.assertIn(self.works[6]['quote_zh'], messages[-1]['content'])
+        self.assertIn(self.works[6]['reading_zh'], messages[-1]['content'])
+        self.assertNotIn(self.works[6]['title_en'], messages[-1]['content'])
+        self.assertNotRegex(messages[-1]['content'], '[A-Za-z]')
         self.assertNotIn(self.uid, str(messages))
 
     def test_static_images_are_readable_from_deployed_path_locally(self):

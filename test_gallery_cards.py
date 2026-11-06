@@ -15,18 +15,23 @@ from unittest.mock import patch
 import gallery_cards as gallery
 
 
-ABOUT = (
+ABOUT_ORIGINAL = (
     "ABOUT THE ARTIST\n\n關於藝術家\n\nCHRISTY P\n\n"
     "這是完整核准原文的固定測試種子，不可用 JSON 短版取代。\n\n"
     "This fixed seed stands for the entire approved bilingual original.\n"
 )
+ABOUT = (
+    "關於藝術家\n\nChristy P\n\n"
+    "這是完整核准中文原文的固定測試種子，不可用圖卡短版取代。\n\n"
+    "完整段落與換行都必須保留，不能混入英文介紹。\n"
+)
 ARTISTS = [
     {
-        "key": key, "title_zh": "藝術家節點 " + key,
+        "key": key, "title_zh": "藝術家節點 " + str(index),
         "title_en": "Artist card " + key, "image_filename": "artist_" + key + ".jpg",
-        "text_zh": "核准詳細中文：" + key, "text_en": "Approved detailed English: " + key,
+        "text_zh": "核准詳細中文：" + str(index), "text_en": "Approved detailed English: " + key,
     }
-    for key in gallery._ARTIST_KEYS
+    for index, key in enumerate(gallery._ARTIST_KEYS, 1)
 ]
 WORKS = [
     {
@@ -103,7 +108,8 @@ class GalleryTests(unittest.TestCase):
 
     def test_status_only_fixed_contract(self):
         self.assertEqual(gallery.content_status(), {
-            "cards_version": "artist_works_bilingual_v1", "artist_cards_count": 7, "artwork_cards_count": 10,
+            "cards_version": "artist_works_zh_v2", "content_language": "zh-TW",
+            "artist_cards_count": 7, "artwork_cards_count": 10,
         })
 
     def test_natural_about_entries_preserve_entire_original(self):
@@ -129,17 +135,16 @@ class GalleryTests(unittest.TestCase):
         self.assertEqual(joined_text(result), self.about)
         self.assert_native_limits(result)
 
-    def test_every_artist_image_and_detailed_bilingual_text(self):
+    def test_every_artist_image_and_detailed_chinese_text(self):
         for row in self.artists:
             with self.subTest(key=row["key"]):
                 result = gallery.resolve_postback("christy_p:artist:" + row["key"], "artist")
                 self.assert_native_limits(result)
                 self.assertEqual(result[0]["originalContentUrl"], gallery._IMAGE_BASE + row["image_filename"])
-                if row["key"] != "who":
-                    self.assertIn(row["text_zh"], joined_text(result))
-                    self.assertIn(row["text_en"], joined_text(result))
-                if row["key"] == "age16":
-                    self.assertEqual(joined_text(result), row["text_zh"] + "\n\n" + row["text_en"])
+                self.assertEqual(joined_text(result), self.about if row["key"] == "who" else row["text_zh"])
+                self.assertNotIn(row["text_en"], joined_text(result))
+                self.assertNotIn(row["title_en"], joined_text(result))
+                self.assertNotRegex(joined_text(result).replace("Christy P", ""), r"[A-Za-z]")
 
     def test_series_natural_entries_and_complete_directory(self):
         for text in ["2", "２", "作品系列", "作品介紹", "作品目录", "想看作品", "介绍万物可爱论", "Show me artworks", "EVERYTHING IS CUTE", "介紹《萬物可愛論》", "想看 Christy P 的作品"]:
@@ -151,11 +156,14 @@ class GalleryTests(unittest.TestCase):
                 detail = joined_text(result)
                 series = next(row for row in self.artists if row["key"] == "series")
                 self.assertIn(series["text_zh"], detail)
-                self.assertIn(series["text_en"], detail)
+                self.assertNotIn(series["text_en"], detail)
+                self.assertNotIn(series["title_en"], detail)
+                self.assertIn("作品目錄", detail)
                 for row in self.works:
                     self.assertIn(row["title_zh"], detail)
-                    self.assertIn(row["title_en"], detail)
+                    self.assertNotIn(row["title_en"], detail)
                 self.assertIn(gallery._UNAVAILABLE, detail)
+                self.assertNotRegex(detail, r"[A-Za-z]")
                 self.assertEqual(len(action_data(result)), 11)
                 self.assertEqual(action_data(result)[:10], [f"christy_p:work:{index}" for index in range(1, 11)])
 
@@ -181,10 +189,16 @@ class GalleryTests(unittest.TestCase):
                 self.assertEqual(len(result), 2)
                 self.assert_native_limits(result)
                 self.assertEqual(result[0]["originalContentUrl"], gallery._IMAGE_BASE + row["image_filename"])
-                for field in ["title_zh", "title_en", "quote_zh", "quote_en", "reading_zh", "reading_en"]:
+                for field in ["title_zh", "quote_zh", "reading_zh"]:
                     self.assertIn(row[field], joined_text(result))
-                self.assertIn("原句 Quote", joined_text(result))
-                self.assertIn("作品導讀 Reading", joined_text(result))
+                for field in ["title_en", "quote_en", "reading_en"]:
+                    self.assertNotIn(row[field], joined_text(result))
+                self.assertEqual(joined_text(result), (
+                    f"作品 {index}｜{row['title_zh']}\n\n"
+                    f"原句\n{row['quote_zh']}\n\n"
+                    f"作品導讀\n{row['reading_zh']}"
+                ))
+                self.assertNotRegex(joined_text(result), r"[A-Za-z]")
                 actions = action_data(result)
                 self.assertIn("christy_p:artworks", actions)
                 self.assertIn("christy_p:about", actions)
@@ -377,7 +391,10 @@ class GalleryTests(unittest.TestCase):
 
     def test_missing_or_empty_data_is_controlled_and_can_recover(self):
         self.artists, self.works, self.about = [], [], ""
-        self.assertEqual(gallery.content_status(), {"cards_version": gallery._VERSION, "artist_cards_count": 0, "artwork_cards_count": 0})
+        self.assertEqual(gallery.content_status(), {
+            "cards_version": "artist_works_zh_v2", "content_language": "zh-TW",
+            "artist_cards_count": 0, "artwork_cards_count": 0,
+        })
         self.assertIsNone(gallery.resolve_text("藝術家介紹", "missing"))
         self.assertIsNone(gallery.resolve_postback("christy_p:artworks", "missing"))
         self.assertIsNone(gallery.resolve_postback("christy_p:work:1", "missing"))
@@ -404,12 +421,15 @@ class GalleryTests(unittest.TestCase):
         with patch.object(gallery, "_read_about", GalleryTests.original_read_about):
             with patch.object(gallery.Path, "open", side_effect=FileNotFoundError()):
                 self.assertEqual(gallery._read_about(), "")
-            with patch.object(gallery.Path, "open", return_value=io.StringIO(ABOUT + "\r\n")):
+            with patch.object(gallery.Path, "open", autospec=True, return_value=io.StringIO(ABOUT + "\r\n")) as opened:
                 self.assertEqual(gallery._read_about(), ABOUT + "\r\n")
+                opened.assert_called_once_with(
+                    gallery._DATA_DIR / "about_artist_zh.txt", encoding="utf-8", newline="",
+                )
 
     def test_utf16_emoji_splitting_preserves_original_and_message_cap(self):
         self.assertEqual(gallery._utf16_len("中😀"), 3)
-        self.about = "😀" * 3000 + "\nApproved ending\n"
+        self.about = "😀" * 3000 + "\n\n核准中文結尾\n"
         result = gallery.resolve_postback("christy_p:about", "utf16")
         self.assert_native_limits(result)
         self.assertEqual(len(result), 4)
@@ -421,6 +441,40 @@ class GalleryTests(unittest.TestCase):
         self.assertEqual(len(gallery._split_text("😀" * 2500)), 1)
         with self.assertRaises(ValueError):
             gallery._button("😀" * 11, "christy_p:about")
+
+    def test_chinese_about_header_paragraphs_survive_split_boundary(self):
+        header = "關於藝術家\n\nChristy P\n\n"
+        self.about = header + "中" * (5000 - gallery._utf16_len(header) - 1) + "\n\n下一段完整中文。\n"
+        result = gallery.resolve_postback("christy_p:about", "chinese-boundary")
+        self.assert_native_limits(result)
+        self.assertEqual(len(result), 4)
+        self.assertEqual(gallery._utf16_len(result[2]["text"]), 5000)
+        self.assertTrue(result[2]["text"].startswith(header))
+        self.assertTrue(result[2]["text"].endswith("\n"))
+        self.assertTrue(result[3]["text"].startswith("\n下一段完整中文。"))
+        self.assertEqual(joined_text(result), self.about)
+        self.assertNotRegex(joined_text(result).replace("Christy P", ""), r"[A-Za-z]")
+
+    def test_display_does_not_overwrite_original_bilingual_source_fixtures(self):
+        artists_before, works_before = copy.deepcopy(self.artists), copy.deepcopy(self.works)
+        original_before = ABOUT_ORIGINAL
+        for row in self.artists:
+            gallery.resolve_postback("christy_p:artist:" + row["key"], "retained-artist")
+        gallery.resolve_postback("christy_p:artworks", "retained-catalog")
+        for row in self.works:
+            gallery.resolve_postback(f"christy_p:work:{row['id']}", "retained-work")
+        self.assertEqual(self.artists, artists_before)
+        self.assertEqual(self.works, works_before)
+        self.assertEqual(ABOUT_ORIGINAL, original_before)
+        self.assertIn("ABOUT THE ARTIST", ABOUT_ORIGINAL)
+        self.assertIn("approved bilingual original", ABOUT_ORIGINAL)
+        self.assertNotIn("ABOUT THE ARTIST", self.about)
+        for row in self.artists:
+            self.assertTrue(row["title_en"])
+            self.assertTrue(row["text_en"])
+        for row in self.works:
+            for field in ("title_en", "quote_en", "reading_en"):
+                self.assertTrue(row[field])
 
     def test_large_titles_do_not_overflow_quick_reply_labels(self):
         for row in self.works:

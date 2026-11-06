@@ -23,7 +23,7 @@ __all__ = ["resolve_text", "resolve_postback", "content_status"]
 
 _DATA_DIR = Path(__file__).resolve().parent
 _IMAGE_BASE = "https://christy-line-bot.onrender.com/static/gallery/"
-_VERSION = "artist_works_bilingual_v1"
+_VERSION = "artist_works_zh_v2"
 _ARTIST_KEYS = ("cover", "who", "age3", "age13", "age16", "series", "philosophy")
 _ARTIST_ORDER = ("who", "age3", "age13", "age16", "series", "philosophy")
 _TTL_SECONDS = 30 * 60
@@ -63,7 +63,7 @@ _DAILY_TITLES = {
     "怪物", "monster", "我想安靜", "好累", "so tired", "我好嫉妒", "i am jealous",
     "我十三歲", "我13歲", "我16歲", "我在畫畫", "別人的展覽", "someone else's exhibition",
 }
-_UNAVAILABLE = "第 11／12 件作品圖片尚未提供。\nImages for artworks 11 and 12 have not been provided."
+_UNAVAILABLE = "第 11／12 件作品圖片尚未提供。"
 
 
 @dataclass(frozen=True)
@@ -84,7 +84,7 @@ def _read_json(path: Path) -> list:
 def _read_about() -> str:
     try:
         # newline='' retains the approved original text, including its line endings.
-        with (_DATA_DIR / "about_artist.txt").open(encoding="utf-8", newline="") as handle:
+        with (_DATA_DIR / "about_artist_zh.txt").open(encoding="utf-8", newline="") as handle:
             return handle.read()
     except (OSError, UnicodeError):
         return ""
@@ -133,6 +133,7 @@ def content_status() -> dict:
     content = _load_content()
     return {
         "cards_version": _VERSION,
+        "content_language": "zh-TW",
         "artist_cards_count": len(content.artists),
         "artwork_cards_count": len(content.works),
     }
@@ -260,8 +261,8 @@ def _messages(images: list[dict], text: str, buttons: list[dict]) -> Optional[li
     return result
 
 
-def _bilingual(row: dict) -> str:
-    return row["text_zh"] + "\n\n" + row["text_en"]
+def _chinese_text(row: dict) -> str:
+    return row["text_zh"]
 
 
 def _about(content: _Content) -> Optional[list[dict]]:
@@ -274,7 +275,7 @@ def _artist(key: str, content: _Content) -> Optional[list[dict]]:
     row = content.artists.get(key)
     if row is None or (key == "who" and not content.about.strip()):
         return None
-    text = content.about if key == "who" else _bilingual(row)
+    text = content.about if key == "who" else _chinese_text(row)
     return _messages([_image(row)], text, _artist_buttons(key))
 
 
@@ -282,9 +283,9 @@ def _series(content: _Content) -> Optional[list[dict]]:
     row = content.artists.get("series")
     if row is None or not content.works:
         return None
-    detail = _bilingual(row)
-    catalog = "作品目錄 Artwork catalogue\n\n" + "\n".join(
-        f"{index}. {work['title_zh']}｜{work['title_en']}" for index, work in sorted(content.works.items())
+    detail = _chinese_text(row)
+    catalog = "作品目錄\n\n" + "\n".join(
+        f"{index}. {work['title_zh']}" for index, work in sorted(content.works.items())
     ) + "\n\n" + _UNAVAILABLE
     buttons = _catalog_buttons(content)
     combined = detail + "\n\n" + catalog
@@ -304,9 +305,9 @@ def _work(index: int, content: _Content) -> Optional[list[dict]]:
     if row is None:
         return None
     text = (
-        f"作品 {index}｜{row['title_zh']}\nArtwork {index} | {row['title_en']}\n\n"
-        f"原句 Quote\n{row['quote_zh']}\n\n{row['quote_en']}\n\n"
-        f"作品導讀 Reading\n{row['reading_zh']}\n\n{row['reading_en']}"
+        f"作品 {index}｜{row['title_zh']}\n\n"
+        f"原句\n{row['quote_zh']}\n\n"
+        f"作品導讀\n{row['reading_zh']}"
     )
     return _messages([_image(row)], text, _work_buttons(index, content))
 
@@ -341,15 +342,15 @@ def _navigate(state: dict, forward: bool, session_key: str, content: _Content) -
             index = _ARTIST_ORDER.index(key) + (1 if forward else -1)
             if 0 <= index < len(_ARTIST_ORDER):
                 return _respond("artist", _ARTIST_ORDER[index], session_key, content)
-        ending = "藝術家故事已到這一端。可選擇作品目錄或重新閱讀。\nThis is the end of the artist story in this direction. Choose the catalogue or read again."
+        ending = "藝術家故事已到這一端。可選擇作品目錄或重新閱讀。"
     else:
         index = state["index"] + (1 if forward else -1)
         if index in content.works:
             return _respond("work", index, session_key, content)
         if forward and state["index"] == 10:
-            ending = "已看完目前提供的 10 件作品。\nYou have reached the end of the 10 available artworks.\n\n" + _UNAVAILABLE
+            ending = "已看完目前提供的 10 件作品。\n\n" + _UNAVAILABLE
         else:
-            ending = "目前沒有更多可瀏覽的作品。可選擇作品目錄。\nNo further artwork is available in this direction. Choose the catalogue."
+            ending = "目前沒有更多可瀏覽的作品。可選擇作品目錄。"
     _clear(session_key)
     return _messages([], ending, _roots())
 

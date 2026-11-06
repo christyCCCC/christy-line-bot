@@ -23,8 +23,8 @@ from typing import Deque, Optional
 
 
 _BASE_DIR = Path(__file__).resolve().parent
-WELCOME_FILE = _BASE_DIR / "welcome_message.txt"
-ABOUT_FILE = _BASE_DIR / "about_artist.txt"
+WELCOME_FILE = _BASE_DIR / "welcome_message_zh.txt"
+ABOUT_FILE = _BASE_DIR / "about_artist_zh.txt"
 SYSTEM_PROMPT_FILE = _BASE_DIR / "system_prompt.txt"
 
 MEMORY_MAX_SESSIONS = 200
@@ -48,7 +48,7 @@ _HELP_MESSAGE = (
 )
 
 _SERIES_MESSAGE = (
-    "《萬物可愛論》（EVERYTHING IS CUTE）把目光放在慾望、嫉妒、孤獨、"
+    "《萬物可愛論》把目光放在慾望、嫉妒、孤獨、"
     "恐懼與愛等常被隱藏的部分。這裡的「可愛」不是裝飾，也不等於純真或無害，"
     "更不是替傷害開脫；它是一種觀看的方法，讓人越過第一印象，看見人性的柔軟、"
     "矛盾與難以命名之處。"
@@ -56,18 +56,18 @@ _SERIES_MESSAGE = (
 
 _TITLE_MESSAGE = (
     "《萬物可愛論》第一季的 12 件作品：\n"
-    "1 DON’T LOOK AT ME／先別看我\n"
-    "2 SWEET ENVY／甜甜的嫉妒\n"
-    "3 THE CROWN CAN WAIT／皇冠可以等\n"
-    "4 LUCKY ENOUGH／足夠幸運\n"
-    "5 THE SHADOW STAYS／影子一直都在\n"
-    "6 LOVE BITES／愛會咬人\n"
-    "7 CROWN ME／自己戴上皇冠\n"
-    "8 MONSTER NEEDS LOVE／怪物也需要愛\n"
-    "9 BAD IDEA／壞主意\n"
-    "10 LEAVE ME ALONE／讓我安靜一下\n"
-    "11 WE ARE BOTH／我們都是\n"
-    "12 EVERYTHING IS CUTE／萬物可愛論\n\n"
+    "1 先別看我\n"
+    "2 甜甜的嫉妒\n"
+    "3 皇冠可以等\n"
+    "4 足夠幸運\n"
+    "5 影子一直都在\n"
+    "6 愛會咬人\n"
+    "7 自己戴上皇冠\n"
+    "8 怪物也需要愛\n"
+    "9 壞主意\n"
+    "10 讓我安靜一下\n"
+    "11 我們都是\n"
+    "12 萬物可愛論\n\n"
     "標題已確認；每件的作品故事、尺寸與價格尚不能自行補充。"
 )
 
@@ -160,30 +160,14 @@ def _read_approved(path: Path) -> str:
 
 
 def approved_welcome_preview() -> list[str]:
-    """Return the approved bilingual welcome copy in three LINE-safe bubbles.
-
-    The archived wording is deliberately partitioned at paragraph boundaries:
-    Chinese (255 characters), English introduction (318), and English closing
-    (376).  Joining the bubbles with two newlines reconstructs the approved text.
-    """
+    """Return the approved Chinese welcome copy, normally as one text bubble."""
 
     welcome = _read_approved(WELCOME_FILE)
+    if welcome and len(welcome) <= 500:
+        return [welcome]
     paragraphs = welcome.split("\n\n") if welcome else []
-    if len(paragraphs) >= 14:
-        preview = [
-            "\n\n".join(paragraphs[:7]),
-            "\n\n".join(paragraphs[7:10]),
-            "\n\n".join(paragraphs[10:]),
-        ]
-        if (
-            [len(part) for part in preview] == [255, 318, 376]
-            and all(part and len(part) <= 500 for part in preview)
-        ):
-            return preview
 
-    # This is defensive only: source copy is expected to be the approved 14-paragraph
-    # version above. It still guarantees nonempty, <=500-character output if a source
-    # file is temporarily unavailable or has been replaced upstream.
+    # Preserve paragraph boundaries if future approved Chinese copy is longer.
     if not welcome:
         return ["歡迎來到 Christy P 的藝術世界。"]
     chunks: list[str] = []

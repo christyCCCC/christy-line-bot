@@ -16,7 +16,7 @@ os.environ["AI_CHAT_ENABLED"] = "false"
 app_module = importlib.import_module("app")
 
 
-APPROVED_ABOUT_ARTIST = """ABOUT THE ARTIST
+APPROVED_ABOUT_ARTIST_ORIGINAL = """ABOUT THE ARTIST
 
 關於藝術家
 
@@ -43,6 +43,10 @@ Her later work across visual design, brand strategy, and entrepreneurship led he
 Her work brings together an American graffiti sensibility, acrylic textures, surreal figures, simplified lines, and vivid complementary colors. Composed girls, asymmetric eyes, and black companion creatures form a universe that appears playful yet carries an underlying psychological tension, reflecting the contradictory selves that coexist within us.
 
 Her work has been exhibited and recognized in Taiwan and Korea. EVERYTHING IS CUTE is her current central body of work—the first fully developed creative universe in which her experience across art, design, branding, and human observation converges."""
+
+
+_ABOUT_PARAGRAPHS = APPROVED_ABOUT_ARTIST_ORIGINAL.split("\n\n")
+APPROVED_ABOUT_ARTIST = "\n\n".join(_ABOUT_PARAGRAPHS[1:3] + _ABOUT_PARAGRAPHS[4:9])
 
 
 class WelcomeAndAboutWebhookTests(unittest.TestCase):
@@ -89,7 +93,8 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "gallery_trigger_version": "natural_requests_v2",
                 "welcome_test_command": "測試歡迎",
                 "scheduled_broadcast": False,
-                "cards_version": "artist_works_bilingual_v1",
+                "cards_version": "artist_works_zh_v2",
+                "content_language": "zh-TW",
                 "artist_cards_count": 7,
                 "artwork_cards_count": 10,
             },
@@ -124,10 +129,13 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
             self.assertEqual(self._signed([{"type": "follow"}]).status_code, 200)
             outbound.assert_not_called()
 
-    def test_webhook_fallback_follow_replies_once_with_exact_archived_welcome(self):
-        archived_welcome = Path(app_module.__file__).with_name("welcome_message.txt").read_text(
+    def test_webhook_fallback_follow_replies_once_with_exact_chinese_welcome(self):
+        approved_welcome = Path(app_module.__file__).with_name("welcome_message_zh.txt").read_text(
             encoding="utf-8"
         ).strip()
+        self.assertEqual(app_module.WELCOME_MESSAGE, approved_welcome)
+        self.assertEqual(len(approved_welcome), 255)
+        self.assertNotRegex(approved_welcome.replace("Christy P", ""), r"[A-Za-z]")
         with patch.object(app_module, "WELCOME_DELIVERY", "webhook"), patch.object(
             app_module.urllib.request,
             "urlopen",
@@ -144,12 +152,17 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 json.loads(outbound_request.data),
                 {
                     "replyToken": "test-reply-token",
-                    "messages": [{"type": "text", "text": archived_welcome}],
+                    "messages": [{"type": "text", "text": approved_welcome}],
                 },
             )
 
     def test_exact_about_postback_replies_once_with_full_approved_biography(self):
         self.assertEqual(app_module.ABOUT_ARTIST_MESSAGE, APPROVED_ABOUT_ARTIST)
+        self.assertEqual(
+            Path(app_module.__file__).with_name("about_artist_zh.txt").read_text(encoding="utf-8").strip(),
+            APPROVED_ABOUT_ARTIST,
+        )
+        self.assertNotRegex(app_module.ABOUT_ARTIST_MESSAGE.replace("Christy P", "").replace("CHRISTY P", ""), r"[A-Za-z]")
         self.assertNotIn("#", app_module.ABOUT_ARTIST_MESSAGE)
         with patch.object(
             app_module.urllib.request,
@@ -168,6 +181,20 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
             self.assertEqual([m["type"] for m in payload["messages"]], ["image", "image", "text"])
             self.assertEqual(payload["messages"][-1]["text"].rstrip("\n"), APPROVED_ABOUT_ARTIST)
             self.assertIn("quickReply", payload["messages"][-1])
+
+    def test_original_bilingual_sources_are_retained_separately_from_display(self):
+        root = Path(app_module.__file__).parent
+        self.assertEqual(
+            (root / "about_artist.txt").read_text(encoding="utf-8").strip(),
+            APPROVED_ABOUT_ARTIST_ORIGINAL,
+        )
+        original_welcome = (root / "welcome_message.txt").read_text(encoding="utf-8").strip()
+        chinese_welcome = (root / "welcome_message_zh.txt").read_text(encoding="utf-8").strip()
+        self.assertEqual("\n\n".join(original_welcome.split("\n\n")[:7]), chinese_welcome)
+        self.assertIn("Welcome to the world of Christy P.", original_welcome)
+        self.assertIn("Explore the works, characters, and artist through the menu below.", original_welcome)
+        self.assertNotEqual(original_welcome, app_module.WELCOME_MESSAGE)
+        self.assertNotEqual(APPROVED_ABOUT_ARTIST_ORIGINAL, app_module.ABOUT_ARTIST_MESSAGE)
 
     def test_unknown_and_four_pending_menu_postbacks_remain_silent(self):
         other_menu_actions = (
@@ -224,14 +251,17 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 self.assertEqual(len(session_key), 64)
                 self.assertNotEqual(session_key, user_id)
 
-    def test_welcome_preview_uses_one_reply_call_and_exact_three_bubbles(self):
+    def test_welcome_preview_uses_one_reply_call_and_exact_one_chinese_bubble(self):
         with patch.object(app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()) as outbound:
             event = {"type": "message", "replyToken": "welcome-preview", "message": {"type": "text", "text": "測試歡迎"}}
             self.assertEqual(self._signed([event]).status_code, 200)
             outbound.assert_called_once()
             texts = [m["text"] for m in json.loads(outbound.call_args.args[0].data)["messages"]]
-            self.assertEqual(len(texts), 3)
-            self.assertEqual("\n\n".join(texts), app_module.WELCOME_MESSAGE)
+            self.assertEqual(len(texts), 1)
+            self.assertEqual([len(text) for text in texts], [255])
+            self.assertEqual(texts, [app_module.WELCOME_MESSAGE])
+            self.assertEqual(texts, [Path(app_module.__file__).with_name("welcome_message_zh.txt").read_text(encoding="utf-8").strip()])
+            self.assertNotRegex(texts[0].replace("Christy P", ""), r"[A-Za-z]")
             self.assertTrue(all(len(text) <= 500 for text in texts))
 
     def test_chat_engine_failure_still_replies_with_nonempty_fallback(self):

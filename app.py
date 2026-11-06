@@ -1,4 +1,4 @@
-"""Christy P LINE webhook: native welcome, bilingual image gallery, and text chat.
+"""Christy P LINE webhook: native welcome, Chinese image gallery, and text chat.
 
 Only approved artist/works gallery postbacks reply. The four pending menu
 sections remain silent. This service
@@ -27,8 +27,8 @@ CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "")
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 WELCOME_DELIVERY = os.environ.get("WELCOME_DELIVERY", "line_official_account")
 TEXT_CHAT_ENABLED = os.environ.get("TEXT_CHAT_ENABLED", "true").lower() in {"1", "true", "yes"}
-WELCOME_MESSAGE = Path(__file__).with_name("welcome_message.txt").read_text(encoding="utf-8").strip()
-ABOUT_ARTIST_MESSAGE = Path(__file__).with_name("about_artist.txt").read_text(encoding="utf-8").strip()
+WELCOME_MESSAGE = Path(__file__).with_name("welcome_message_zh.txt").read_text(encoding="utf-8").strip()
+ABOUT_ARTIST_MESSAGE = Path(__file__).with_name("about_artist_zh.txt").read_text(encoding="utf-8").strip()
 ABOUT_ARTIST_POSTBACK = "christy_p:about"
 
 # Only known event names are logged. Unknown values are normalized so event
@@ -58,9 +58,9 @@ if not CHANNEL_ACCESS_TOKEN:
 if WELCOME_DELIVERY not in {"line_official_account", "webhook"}:
     raise RuntimeError("WELCOME_DELIVERY must be line_official_account or webhook")
 if not WELCOME_MESSAGE or len(WELCOME_MESSAGE) > 5000:
-    raise RuntimeError("The approved bilingual welcome message is empty or too long")
+    raise RuntimeError("The approved Chinese welcome message is empty or too long")
 if not ABOUT_ARTIST_MESSAGE or len(ABOUT_ARTIST_MESSAGE) > 5000:
-    raise RuntimeError("The approved bilingual artist biography is empty or too long")
+    raise RuntimeError("The approved Chinese artist biography is empty or too long")
 
 
 def reply_with_messages(reply_token: str, texts: list[str]) -> None:
@@ -116,7 +116,7 @@ def reply_to_follow(reply_token: str) -> None:
 
 
 def reply_to_about_artist(reply_token: str) -> None:
-    """Send artist images and the unchanged approved bilingual biography."""
+    """Send artist images and the approved Chinese biography."""
     objects = gallery_cards.resolve_postback(ABOUT_ARTIST_POSTBACK)
     if objects:
         reply_with_message_objects(reply_token, objects)
@@ -140,7 +140,7 @@ def reply_to_gallery(reply_token: str, objects: list[dict], session_key: str, re
 
 
 def reply_to_text(reply_token: str, text: str, source: dict) -> None:
-    """Use direct bilingual gallery routes first, then natural AI conversation."""
+    """Use direct Chinese gallery routes first, then natural AI conversation."""
     session_key = anonymous_session_key(source)
     objects = gallery_cards.resolve_text(text, session_key)
     if objects:

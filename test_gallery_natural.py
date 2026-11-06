@@ -70,6 +70,8 @@ class GalleryNaturalTests(unittest.TestCase):
         }
         with (root / "about_artist.txt").open(encoding="utf-8", newline="") as handle:
             cls.about_original = handle.read()
+        with (root / "about_artist_zh.txt").open(encoding="utf-8", newline="") as handle:
+            cls.about_chinese = handle.read()
 
     def setUp(self):
         self._clear_state()
@@ -173,37 +175,55 @@ class GalleryNaturalTests(unittest.TestCase):
         # Concatenation keeps the original verbatim even if LINE text is split.
         full_text = "".join(texts)
         self.assertRegex(full_text, self.TRADITIONAL_CHINESE)
-        self.assertRegex(full_text, r"[A-Za-z]{3,}")
+        # Brand and the LINE platform name already present in approved Chinese
+        # source are proper names, not an English translation or paragraph.
+        without_names = full_text.replace("Christy P", "").replace("CHRISTY P", "").replace("LINE", "")
+        self.assertNotRegex(without_names, r"[A-Za-z]")
+        for message in messages:
+            for item in message.get("quickReply", {}).get("items", []):
+                self.assertNotRegex(item["action"]["label"], r"[A-Za-z]")
         self.assertIn("quickReply", messages[-1])
         if kind == "work":
             row = self.works[index]
             self._assert_images(messages, [row["image_filename"]])
             if index == 1:
                 self.assertEqual(row["image_filename"], "work_01.jpg")
-            for field in ("title_zh", "title_en", "quote_zh", "quote_en", "reading_zh", "reading_en"):
+            for field in ("title_zh", "quote_zh", "reading_zh"):
                 self.assertIn(row[field], full_text, field + " must remain verbatim")
-            self.assertRegex(full_text, r"(?i)\bquote\b")
-            self.assertRegex(full_text, r"(?i)\breading\b")
+            for field in ("title_en", "quote_en", "reading_en"):
+                self.assertTrue(row[field], field + " stays in original JSON")
+                self.assertNotIn(row[field], full_text)
+            self.assertEqual(full_text, (
+                f"作品 {index}｜{row['title_zh']}\n\n"
+                f"原句\n{row['quote_zh']}\n\n"
+                f"作品導讀\n{row['reading_zh']}"
+            ))
         elif kind == "catalog":
             row = self.artists["series"]
             self._assert_images(messages, [row["image_filename"]])
             self.assertIn(row["text_zh"], full_text)
-            self.assertIn(row["text_en"], full_text)
-            self.assertIn(row["title_en"], full_text)
-            self.assertRegex(full_text, r"(?i)\b(?:art|artwork|artworks)\s+catalog(?:ue)?\b")
-            # The catalogue also contains the series' approved bilingual quote.
+            self.assertNotIn(row["text_en"], full_text)
+            self.assertNotIn(row["title_en"], full_text)
+            self.assertIn("作品目錄", full_text)
+            # The catalogue retains the approved Chinese series quote verbatim.
             self.assertIn(row["text_zh"].split("\n\n", 1)[0], full_text)
-            self.assertIn(row["text_en"].split("\n\n", 1)[0], full_text)
             for work in self.works.values():
                 self.assertIn(work["title_zh"], full_text)
-                self.assertIn(work["title_en"], full_text)
+                self.assertNotIn(work["title_en"], full_text)
+            expected_directory = "作品目錄\n\n" + "\n".join(
+                f"{index}. {work['title_zh']}" for index, work in sorted(self.works.items())
+            )
+            self.assertEqual(full_text, row["text_zh"] + "\n\n" + expected_directory + "\n\n第 11／12 件作品圖片尚未提供。")
         else:
             self._assert_images(messages, [
                 self.artists["cover"]["image_filename"],
                 self.artists["who"]["image_filename"],
             ])
-            self.assertEqual(full_text, self.about_original)
+            self.assertEqual(full_text, self.about_chinese)
             self.assertIn("Christy P", full_text)
+            self.assertNotIn("ABOUT THE ARTIST", full_text)
+            self.assertIn("ABOUT THE ARTIST", self.about_original)
+            self.assertIn("Christy P is a Taiwanese artist", self.about_original)
 
     def _assert_negative_resolver(self, text):
         self.assertIsNone(app_module.gallery_cards.resolve_text(text, self._session_key(text)))
@@ -220,7 +240,7 @@ class GalleryNaturalTests(unittest.TestCase):
 def _positive_test(text, kind, index):
     def test(self):
         self._assert_positive(text, kind, index)
-    test.__doc__ = "Gallery image + bilingual approved source, without AI: " + text
+    test.__doc__ = "Gallery image + approved Chinese source, without AI: " + text
     return test
 
 
