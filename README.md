@@ -25,9 +25,9 @@
 
 ## 歡迎來源
 
-`WELCOME_DELIVERY=line_official_account` 時真正 FollowEvent 只驗簽後ACK，不重複發送程式歡迎。原生加入好友歡迎由 LINE Manager 管理，與本專案文案檔獨立；目前中文稿已準備，仍需登入後台刪除英文訊息框。未保存原生設定前，不可宣稱加入好友歡迎已更新。
+`WELCOME_DELIVERY=line_official_account` 時真正 FollowEvent 只驗簽後ACK，不重複發送程式歡迎。原生設定已在LINE後台保存中文，現加入封面原圖；原生歡迎與repo獨立。原生歡迎的設計順序為「先封面圖片、後完整核准中文」，此處不表示後台封面圖片已保存，須另行確認。
 
-「測試歡迎」「歡迎訊息」直接回核准中文稿一則，不是廣播、不補發既有好友。`WELCOME_DELIVERY=webhook` 僅是明確設定的程式歡迎備援，不應與原生歡迎並用。
+「測試歡迎」「歡迎訊息」及既有英文別名 `test welcome`、`welcome message` 以原有 NFKC 正規化後精確匹配，直接回封面原圖與核准中文全文兩則（圖片在先、255字中文在後），不由 AI 判斷、不將偶然相同回覆當觸發，也不是廣播、不補發既有好友。封面為 `static/gallery/welcome_cover_20261108.jpg`，原樣複製、未裁切壓縮。`WELCOME_DELIVERY=webhook` 使用相同兩則作明確設定的程式歡迎備援，不應與原生歡迎並用。
 
 ## 安全及可靠性
 
@@ -39,6 +39,6 @@
 
 ## 維護
 
-`AI_CHAT_ENABLED=false python3 -m unittest -v` 執行本地無發送測試。Render服務自動部署停用，推送Git後需手動部署，再核對`/status`的`cards_version=artist_works_zh_v2`、`content_language=zh-TW`與指定部署live狀態。不要只推送後宣稱上線。
+`AI_CHAT_ENABLED=false python3 -m unittest -v` 執行本地無發送測試。Render服務自動部署停用，推送Git後需手動部署，再核對`/status`的`cards_version=artist_works_zh_v2`、`content_language=zh-TW`、`welcome_image_version=cover_20261108`與指定部署live狀態。不要只推送後宣稱上線。
 
 使用既有Render免費主機；閒置喚醒延遲未因本次文字調整而消除。

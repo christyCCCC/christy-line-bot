@@ -28,6 +28,8 @@ CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
 WELCOME_DELIVERY = os.environ.get("WELCOME_DELIVERY", "line_official_account")
 TEXT_CHAT_ENABLED = os.environ.get("TEXT_CHAT_ENABLED", "true").lower() in {"1", "true", "yes"}
 WELCOME_MESSAGE = Path(__file__).with_name("welcome_message_zh.txt").read_text(encoding="utf-8").strip()
+WELCOME_IMAGE_VERSION = "cover_20261108"
+WELCOME_IMAGE_URL = "https://christy-line-bot.onrender.com/static/gallery/welcome_cover_20261108.jpg"
 ABOUT_ARTIST_MESSAGE = Path(__file__).with_name("about_artist_zh.txt").read_text(encoding="utf-8").strip()
 ABOUT_ARTIST_POSTBACK = "christy_p:about"
 
@@ -111,8 +113,11 @@ def reply_with_text(reply_token: str, text: str) -> None:
 
 
 def reply_to_follow(reply_token: str) -> None:
-    """Send the approved welcome message for a follow event."""
-    reply_with_text(reply_token, WELCOME_MESSAGE)
+    """Send the original welcome cover first, then the complete approved Chinese copy."""
+    reply_with_message_objects(reply_token, [
+        {"type": "image", "originalContentUrl": WELCOME_IMAGE_URL, "previewImageUrl": WELCOME_IMAGE_URL},
+        {"type": "text", "text": WELCOME_MESSAGE},
+    ])
 
 
 def reply_to_about_artist(reply_token: str) -> None:
@@ -142,6 +147,9 @@ def reply_to_gallery(reply_token: str, objects: list[dict], session_key: str, re
 def reply_to_text(reply_token: str, text: str, source: dict) -> None:
     """Use direct Chinese gallery routes first, then natural AI conversation."""
     session_key = anonymous_session_key(source)
+    if chat_engine.is_welcome_request(text):
+        reply_to_follow(reply_token)
+        return
     objects = gallery_cards.resolve_text(text, session_key)
     if objects:
         reply_to_gallery(reply_token, objects, session_key, text)
@@ -272,6 +280,7 @@ def status():
         "chat_style": "responsive_warm_playful_v2",
         "gallery_trigger_version": "natural_requests_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
+        "welcome_image_version": WELCOME_IMAGE_VERSION,
         "scheduled_broadcast": False,
         **gallery_cards.content_status(),
     }, 200

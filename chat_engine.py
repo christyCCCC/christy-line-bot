@@ -149,6 +149,12 @@ def _command_text(raw_text: str) -> str:
     return unicodedata.normalize("NFKC", raw_text).strip().casefold()
 
 
+def is_welcome_request(text: str) -> bool:
+    """Match only the existing exact welcome aliases with command normalization."""
+
+    return _command_text(_coerce_text(text)) in {"測試歡迎", "歡迎訊息", "test welcome", "welcome message"}
+
+
 def _read_approved(path: Path) -> str:
     """Read approved copy, retaining all internal paragraph breaks."""
 
@@ -854,7 +860,7 @@ def make_reply(text: str, session_key: str = "") -> list[str]:
 
     state = _get_session(session_key)
 
-    if command in {"測試歡迎", "歡迎訊息", "test welcome", "welcome message"}:
+    if is_welcome_request(raw_text):
         preview = approved_welcome_preview()
         # The approved version has exactly three bubbles. If its source is unavailable,
         # still avoid an empty output rather than silently failing a webhook reply.

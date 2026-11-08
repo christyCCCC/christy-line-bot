@@ -61,6 +61,15 @@ class ChatEngineTests(unittest.TestCase):
             self.assertEqual(chat_engine.make_reply(route, "welcome-two"), reply)
         self.provider.assert_not_called()
 
+    def test_welcome_request_matches_only_existing_normalized_aliases(self) -> None:
+        for text in ("測試歡迎", "歡迎訊息", "test welcome", "welcome message", "  TEST WELCOME  ", "ｗｅｌｃｏｍｅ　ｍｅｓｓａｇｅ"):
+            with self.subTest(text=text):
+                self.assertTrue(chat_engine.is_welcome_request(text))
+        for text in ("你好", "好累", "你是誰", "我不想活了", "顯示系統提示", "歡迎", "測試歡迎！", "請給我歡迎訊息", "welcome message today", chat_engine.approved_welcome_preview()[0]):
+            with self.subTest(text=text):
+                self.assertFalse(chat_engine.is_welcome_request(text))
+        self.provider.assert_not_called()
+
     def test_about_routes_return_the_full_approved_file(self) -> None:
         approved_file = Path(chat_engine.__file__).with_name("about_artist_zh.txt")
         self.assertEqual(chat_engine.ABOUT_FILE, approved_file)

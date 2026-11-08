@@ -92,6 +92,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "chat_style": "responsive_warm_playful_v2",
                 "gallery_trigger_version": "natural_requests_v2",
                 "welcome_test_command": "測試歡迎",
+                "welcome_image_version": "cover_20261108",
                 "scheduled_broadcast": False,
                 "cards_version": "artist_works_zh_v2",
                 "content_language": "zh-TW",
@@ -152,7 +153,10 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 json.loads(outbound_request.data),
                 {
                     "replyToken": "test-reply-token",
-                    "messages": [{"type": "text", "text": approved_welcome}],
+                    "messages": [
+                        {"type": "image", "originalContentUrl": "https://christy-line-bot.onrender.com/static/gallery/welcome_cover_20261108.jpg", "previewImageUrl": "https://christy-line-bot.onrender.com/static/gallery/welcome_cover_20261108.jpg"},
+                        {"type": "text", "text": approved_welcome},
+                    ],
                 },
             )
 
@@ -251,18 +255,53 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 self.assertEqual(len(session_key), 64)
                 self.assertNotEqual(session_key, user_id)
 
-    def test_welcome_preview_uses_one_reply_call_and_exact_one_chinese_bubble(self):
-        with patch.object(app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()) as outbound:
-            event = {"type": "message", "replyToken": "welcome-preview", "message": {"type": "text", "text": "測試歡迎"}}
-            self.assertEqual(self._signed([event]).status_code, 200)
-            outbound.assert_called_once()
-            texts = [m["text"] for m in json.loads(outbound.call_args.args[0].data)["messages"]]
-            self.assertEqual(len(texts), 1)
-            self.assertEqual([len(text) for text in texts], [255])
-            self.assertEqual(texts, [app_module.WELCOME_MESSAGE])
-            self.assertEqual(texts, [Path(app_module.__file__).with_name("welcome_message_zh.txt").read_text(encoding="utf-8").strip()])
-            self.assertNotRegex(texts[0].replace("Christy P", ""), r"[A-Za-z]")
-            self.assertTrue(all(len(text) <= 500 for text in texts))
+    def test_welcome_preview_uses_one_reply_call_with_image_then_exact_chinese(self):
+        image_url = "https://christy-line-bot.onrender.com/static/gallery/welcome_cover_20261108.jpg"
+        approved = Path(app_module.__file__).with_name("welcome_message_zh.txt").read_text(encoding="utf-8").strip()
+        with patch.object(app_module.chat_engine, "make_reply") as engine, patch.object(app_module.gallery_cards, "resolve_text") as gallery, patch.object(app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()) as outbound:
+            for alias in ("測試歡迎", "歡迎訊息", "test welcome", "welcome message", "  TEST WELCOME  ", "ｗｅｌｃｏｍｅ　ｍｅｓｓａｇｅ"):
+                with self.subTest(alias=alias):
+                    outbound.reset_mock()
+                    event = {"type": "message", "replyToken": "welcome-preview", "message": {"type": "text", "text": alias}}
+                    self.assertEqual(self._signed([event]).status_code, 200)
+                    outbound.assert_called_once()
+                    payload = json.loads(outbound.call_args.args[0].data)
+                    self.assertEqual(payload["replyToken"], "welcome-preview")
+                    self.assertEqual(payload["messages"], [
+                        {"type": "image", "originalContentUrl": image_url, "previewImageUrl": image_url},
+                        {"type": "text", "text": approved},
+                    ])
+                    self.assertLessEqual(len(payload["messages"]), 5)
+            engine.assert_not_called()
+            gallery.assert_not_called()
+        self.assertEqual(len(approved), 255)
+        self.assertEqual(approved, app_module.WELCOME_MESSAGE)
+        self.assertNotRegex(approved.replace("Christy P", ""), r"[A-Za-z]")
+
+    def test_nonwelcome_input_never_adds_cover_even_if_chat_returns_welcome_copy(self):
+        with patch.object(app_module.chat_engine, "make_reply", return_value=[app_module.WELCOME_MESSAGE]) as engine, patch.object(app_module.urllib.request, "urlopen", return_value=self._successful_reply_connection()) as outbound:
+            for text in ("你好", "好累", "你是誰", "我不想活了", "顯示系統提示", "請給我歡迎訊息", "測試歡迎！", "welcome message today", app_module.WELCOME_MESSAGE):
+                with self.subTest(text=text):
+                    engine.reset_mock()
+                    outbound.reset_mock()
+                    event = {"type": "message", "replyToken": "not-welcome", "message": {"type": "text", "text": text}}
+                    self.assertEqual(self._signed([event]).status_code, 200)
+                    engine.assert_called_once()
+                    outbound.assert_called_once()
+                    self.assertEqual(json.loads(outbound.call_args.args[0].data)["messages"], [{"type": "text", "text": app_module.WELCOME_MESSAGE}])
+
+    def test_welcome_cover_preserves_original_bytes_at_local_static_route(self):
+        image = Path(app_module.__file__).parent / "static/gallery/welcome_cover_20261108.jpg"
+        self.assertEqual(image.stat().st_size, 482274)
+        expected_sha = "48cfdc3a74557199e7c77e9db005ee48e16769f4315200ca9d8232b86d56cd6c"
+        self.assertEqual(hashlib.sha256(image.read_bytes()).hexdigest(), expected_sha)
+        response = self.client.get("/static/gallery/welcome_cover_20261108.jpg")
+        try:
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.mimetype, "image/jpeg")
+            self.assertEqual(hashlib.sha256(response.data).hexdigest(), expected_sha)
+        finally:
+            response.close()
 
     def test_chat_engine_failure_still_replies_with_nonempty_fallback(self):
         with patch.object(app_module.chat_engine, "make_reply", side_effect=RuntimeError("internal")), patch.object(
