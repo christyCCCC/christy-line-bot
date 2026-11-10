@@ -21,15 +21,17 @@ ticket_reply = importlib.import_module("ticket_reply")
 app_module = importlib.import_module("app")
 
 
-EXPECTED_VERSION = "yak_invitation_20261110"
+EXPECTED_VERSION = "yak_invitation_20261110_user_copy_v2"
 EXPECTED_IMAGE_URL = (
     "https://christy-line-bot.onrender.com/static/gallery/yak_invitation_20261110.jpg"
 )
 EXPECTED_THANK_YOU = (
-    "這張是高雄漾藝術博覽會的邀請函，先收好。\n\n"
-    "憑這張邀請函，可以再帶一位朋友一起入場喔。\n"
-    "入場時請依邀請函上的說明與現場規定使用。\n\n"
-    "謝謝你願意走進我的藝術世界，期待在展場見到你。"
+    "誠摯邀請您參加「2026 高雄漾藝術博覽會」🎨❤️\n"
+    "憑這張電子邀請函，即可免費入場參觀，還可以再攜帶一位親友同行，兩人一起欣賞精彩的藝術作品！🥰\n"
+    "📅 展覽日期｜11/13（五）～11/15（日）\n"
+    "📍 展覽地點｜高雄駁二藝術特區 P3 倉庫\n"
+    "期待您能在這場藝術盛會中，感受年輕藝術家的創作能量，遇見喜歡的作品，收穫美好的回憶！\n"
+    "祝福您有個愉快、美好又充滿驚喜的一天！"
 )
 EXPECTED_SOURCE_SHA256 = "742796e73665a843834e5e79150986b8d58f5349af5d6bcb762df0493dd8cd89"
 EXPECTED_MESSAGES = [
@@ -57,9 +59,12 @@ class TicketResolverTests(unittest.TestCase):
         messages = ticket_reply.resolve_text("門票")
         self.assertEqual(messages, EXPECTED_MESSAGES)
         self.assertEqual([message["type"] for message in messages], ["image", "text"])
-        self.assertIn("可以再帶一位朋友一起入場", messages[1]["text"])
-        self.assertIn("謝謝你", messages[1]["text"])
-        self.assertNotRegex(messages[1]["text"], r"[A-Za-z]")
+        self.assertIn("再攜帶一位親友同行", messages[1]["text"])
+        self.assertIn("免費入場", messages[1]["text"])
+        self.assertIn("祝福您有個愉快", messages[1]["text"])
+        self.assertNotIn("我的藝術世界", messages[1]["text"])
+        self.assertNotIn("期待在展場見到你", messages[1]["text"])
+        self.assertNotIn("\ufffd", messages[1]["text"])
         self.assertLessEqual(len(messages[1]["text"].encode("utf-16-le")) // 2, 5000)
 
     def test_all_named_traditional_and_simplified_ticket_keywords(self):

@@ -32,8 +32,9 @@ MEMORY_TTL_SECONDS = 30 * 60
 MEMORY_MAX_MESSAGES = 6
 _MEMORY_TEXT_LIMIT = 800
 
+CHAT_STYLE = "responsive_low_questions_v3"
 IDENTITY_DISCLOSURE = "這裡是 Christy P 官方 LINE 的自動回覆助手，可以一起聊作品與日常。"
-GENERIC_FALLBACK = "現在暫時沒辦法完整理解這句話，怕接錯你的意思。可以換個說法嗎？"
+GENERIC_FALLBACK = "這句我暫時沒接準，你可以換個說法，或接著說下去。"
 CLEAR_CONFIRMATION = "已清除本助手的暫存上下文；這不會刪除 LINE 或 AI 供應商的紀錄。"
 
 _HELP_MESSAGE = (
@@ -85,7 +86,11 @@ _MINIMAL_SYSTEM_PROMPT = (
     "You are the official automated reply assistant for Christy P's LINE account, "
     "not the artist. Do not proactively introduce yourself or add identity disclaimers. "
     "If directly asked who you are, truthfully say you handle automated replies for the official LINE. "
-    "Reply briefly and warmly in the user's language. Do not claim "
+    "Reply briefly and warmly in the user's language. Answer or acknowledge the topic first; "
+    "default to statements, not routine follow-up questions. Ask one short question only "
+    "when essential information is missing or the user invites a question. Do not immediately "
+    "ask again after a question or treat a short confirmation as a new interview. "
+    "Necessary clarification and safety care are not subject to a hard question quota. Do not claim "
     "unverified facts, invent stories, request personal data, send broadcasts, or use tools."
 )
 _KNOWN_FACTS_CONTEXT = (
@@ -98,8 +103,16 @@ _KNOWN_FACTS_CONTEXT = (
     "and recognized in Taiwan and Korea. The official first-season work titles in the system "
     "prompt are approved and may be listed. Do not invent other titles, dates, prices, "
     "stockists, contact details, or character stories."
-    " No verified public merchandise items, prices, purchasing channels, exhibition "
-    "dates, stockists or collaboration contact details are currently available. "
+    " The user-approved official website is https://zingy-eclair-bb1011.netlify.app/. "
+    "No other email or contact details are user-approved, including any discovered on that website. "
+    "No verified public merchandise items, prices, purchasing channels, Christy P's own "
+    "exhibition dates, stockists or collaboration contact details are currently available. "
+    "The shared 2026 Kaohsiung Young Art Fair / 高雄漾藝術博覽會 invitation is a Cultural "
+    "Affairs Bureau activity on November 13–15, 2026 at Pier-2 P3, not a Christy P exhibition. "
+    "It does not establish that her works are shown or that she attends. The approved electronic "
+    "invitation allows free admission and one accompanying friend or family member, as provided "
+    "by the user. The full invitation is sent only by the program's approved fixed route; "
+    "do not invent ticket sales, guarantees, or additional invitation terms. "
     "For mixed questions, respond to the everyday topic too, but explicitly say those "
     "official details are unannounced/unverified. Never treat an ordinary purchase, "
     "another artist's exhibition or workplace cooperation as a Christy P enquiry."
@@ -123,6 +136,7 @@ class _SessionState:
 
     last_seen: float
     disclosed_identity: bool = False
+    massage_offer_made: bool = False
     messages: Deque[dict[str, str]] = field(
         default_factory=lambda: deque(maxlen=MEMORY_MAX_MESSAGES)
     )
@@ -260,6 +274,8 @@ def _remember(state: Optional[_SessionState], user_text: str, reply: str) -> Non
     with _MEMORY_LOCK:
         state.messages.append({"role": "user", "content": _memory_text(user_text)})
         state.messages.append({"role": "assistant", "content": _memory_text(reply)})
+        if "捶捶背" in reply and ("？" in reply or "?" in reply):
+            state.massage_offer_made = True
         state.last_seen = time.time()
 
 
@@ -267,6 +283,12 @@ def remember_gallery_context(session_key: str, request_text: str, reply_text: st
     """Remember one delivered gallery turn using the same bounded anonymous memory."""
     state = _get_session(session_key)
     _remember(state, "Christy P 圖文介紹：" + request_text, reply_text)
+
+
+def remember_ticket_context(session_key: str, request_text: str, reply_text: str) -> None:
+    """Remember an approved third-party invitation, never as the artist's exhibit."""
+    state = _get_session(session_key)
+    _remember(state, "文化局活動邀請函（非 Christy P 作品展）：" + request_text, reply_text)
 
 
 def _ai_enabled_by_environment() -> bool:
@@ -308,7 +330,10 @@ def _load_system_context() -> str:
 def _provider_messages(state: Optional[_SessionState], user_text: str) -> list[dict[str, str]]:
     """Build a compact, tool-free OpenAI Chat Completions message list."""
 
-    messages = [{"role": "system", "content": _load_system_context()}]
+    system_context = _load_system_context()
+    if state is not None and state.massage_offer_made:
+        system_context += "\nA back-pat offer already appeared in this session; do not repeat that question. Respond gently with a statement."
+    messages = [{"role": "system", "content": system_context}]
     if state is not None:
         for message in state.messages:
             role = message.get("role")
@@ -560,7 +585,7 @@ def _common_chat_reply(text: str, state: Optional[_SessionState] = None) -> Opti
         return "好，不勉強，這個先放一邊。"
     if lowered in {"好啊", "要", "可以", "好", "好呀", "yes", "sure"}:
         if "捶捶背" in previous_reply:
-            return "力道要溫柔一點，還是把今天的怨氣一起捶掉？"
+            return "好，今天已經夠用力了，這裡就輕一點。"
         if "電影" in previous_reply:
             return "那就挑一部合心情的，不用把週末排成工作表。"
         if "無聊" in previous_reply or "小事" in previous_reply:
@@ -581,31 +606,33 @@ def _common_chat_reply(text: str, state: Optional[_SessionState] = None) -> Opti
             return "我不吃喝，但這題投給你現在最想吃的，不必連一餐都考滿分。"
         return "我就順著你剛剛的話題聊。你想說多少都可以。"
     if lowered in {"嗨", "你好", "您好", "哈囉", "哈嘍", "hello", "hi", "hey"}:
-        return "嗨，今天過得怎麼樣？" if "今天過得怎麼樣" not in previous_reply else "又見面啦，有什麼新鮮事？"
+        return "嗨，慢慢聊就好。" if "嗨，慢慢聊就好。" != previous_reply else "又見面啦，就照你的節奏聊。"
     if lowered in {"在幹嘛", "你在幹嘛", "妳在幹嘛", "what are you doing", "wyd"}:
-        return "在接住你丟來的話題。今天忙，還是偷到一點閒？"
+        return "在回你剛剛丟來的話題，慢慢聊，不用趕。"
     if lowered in {"謝謝", "感謝", "多謝", "thanks", "thank you", "thx"}:
         return "不客氣，先照顧好自己。" if "累" in previous_user else "不客氣，這句收下了。"
     if lowered in {"晚安", "晚安安", "good night", "gn"}:
         return "晚安，今天辛苦了，剩下的明天再說。"
     if lowered in {"好累", "我好累"}:
+        if (state is not None and state.massage_offer_made) or "？" in previous_reply or "?" in previous_reply:
+            return "今天已經夠用力了，先歇一下，不急著打起精神。"
         return "需要幫你捶捶背嗎？"
     if _contains_any(lowered, ("好累", "很累", "累死", "疲倦", "疲憊", "疲惫", "tired", "exhausted")):
         return "聽起來今天把電量耗光了。先歇一下，不用急著把每件事都做好。"
     if _contains_any(lowered, ("無聊", "无聊", "悶", "bored")):
-        return "無聊得像時間卡住了？挑一件不費力的小事，換首歌或走兩步就好。"
+        return "無聊得像時間卡住了。挑一件不費力的小事，換首歌或走兩步就好。"
     if "咖啡" in lowered and "奶茶" in lowered:
-        return "想清醒選咖啡，想被甜一下選奶茶。今天想要哪一種？"
+        return "想清醒選咖啡，想被甜一下選奶茶。選現在比較合心情的就好。"
     if _contains_any(lowered, ("早餐", "午餐", "晚餐", "吃飯", "吃饭", "肚子餓", "餓了", "餓", "hungry", "breakfast", "lunch", "dinner")):
         return "先把這餐好好吃上，今天不必連吃什麼都太為難自己。"
     if _contains_any(lowered, ("下雨", "雨天", "雨好大", "rain")):
         return "雨天連出門都像小任務。慢慢走，別讓自己淋得太狼狽。"
     if _contains_any(lowered, ("電影", "电影", "movie")):
-        return "看電影當週末的小逃跑很不錯。想看輕鬆的，還是刺激一點的？"
+        return "看電影當週末的小逃跑很不錯，挑一部合心情的，暫時把待辦放旁邊。"
     if "同事" in lowered and _contains_any(lowered, ("合作", "配合")):
         return "同事不配合真的很磨人。先分清楚哪些是你的責任，別把整隊的份都扛上身。"
     if _contains_any(lowered, ("別人的展覽", "别人的展览", "看了展覽", "去看展")):
-        return "看展像換了一副眼睛。有哪一件讓你多停了幾秒？"
+        return "看展像換了一副眼睛，有些畫面會在離開後還留在心裡。"
     return None
 
 
@@ -742,6 +769,8 @@ def _prior_user_refers_to_artist(state: Optional[_SessionState]) -> bool:
         command = _command_text(text).rstrip("？?！!.。")
         if command in {"嗯", "嗯嗯", "好", "好啊", "了解", "謝謝", "ok", "thanks"} or _is_official_followup(command):
             continue
+        if text.startswith("文化局活動邀請函（非 Christy P 作品展）："):
+            return False
         if _has_everyday_topic(text):
             return False
         return _has_artist_reference(text) or command in _OFFICIAL_COMMANDS or command in {
@@ -919,6 +948,7 @@ def make_reply(text: str, session_key: str = "") -> list[str]:
 
 
 __all__ = [
+    "CHAT_STYLE",
     "IDENTITY_DISCLOSURE",
     "MEMORY_MAX_SESSIONS",
     "MEMORY_TTL_SECONDS",
@@ -928,4 +958,5 @@ __all__ = [
     "clear_session",
     "make_reply",
     "mode_descriptor",
+    "remember_ticket_context",
 ]

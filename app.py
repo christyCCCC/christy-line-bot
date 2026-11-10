@@ -155,7 +155,7 @@ def reply_to_text(reply_token: str, text: str, source: dict) -> None:
     if ticket_objects:
         logger.info("LINE ticket invitation prepared: images=1 messages=2")
         reply_with_message_objects(reply_token, ticket_objects)
-        chat_engine.remember_gallery_context(session_key, text, ticket_reply.THANK_YOU_MESSAGE)
+        chat_engine.remember_ticket_context(session_key, text, ticket_reply.THANK_YOU_MESSAGE)
         return
     objects = gallery_cards.resolve_text(text, session_key)
     if objects:
@@ -284,7 +284,7 @@ def status():
         "ordinary_messages_enabled": TEXT_CHAT_ENABLED,
         "chat_mode": ("ai_with_rules" if chat_engine.ai_configured() else "rules_only") if TEXT_CHAT_ENABLED else "off",
         "ai_configured": chat_engine.ai_configured(),
-        "chat_style": "responsive_warm_playful_v2",
+        "chat_style": "responsive_low_questions_v3",
         "gallery_trigger_version": "natural_requests_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "welcome_image_version": WELCOME_IMAGE_VERSION,

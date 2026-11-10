@@ -259,13 +259,13 @@ class ChatEngineTests(unittest.TestCase):
             for accept in ("好啊", "要", "可以"):
                 session = f"massage-{initial}-{accept}"
                 self.assertEqual(chat_engine.make_reply(initial, session), ["需要幫你捶捶背嗎？"])
-                self.assertEqual(chat_engine.make_reply(accept, session), ["力道要溫柔一點，還是把今天的怨氣一起捶掉？"])
+                self.assertEqual(chat_engine.make_reply(accept, session), ["好，今天已經夠用力了，這裡就輕一點。"])
         self.provider.assert_not_called()
 
     def test_massage_pressure_and_later_refusal_keep_the_same_topic(self) -> None:
         session = "massage-complete-sequence"
         self.assertEqual(chat_engine.make_reply("好累", session), ["需要幫你捶捶背嗎？"])
-        self.assertIn("力道", chat_engine.make_reply("好啊", session)[0])
+        self.assertEqual(chat_engine.make_reply("好啊", session), ["好，今天已經夠用力了，這裡就輕一點。"])
         self.assertEqual(chat_engine.make_reply("溫柔一點", session), ["好，今天已經夠用力了，這裡就輕一點。"])
         self.assertEqual(chat_engine.make_reply("不用了", session), ["好，那先讓你放空一下。"])
         self.assertIn("歇一下", chat_engine.make_reply("嗯", session)[0])
@@ -278,6 +278,30 @@ class ChatEngineTests(unittest.TestCase):
             self.assertEqual(chat_engine.make_reply(refusal, session), ["好，那先讓你放空一下。"])
             self.assertEqual(chat_engine.make_reply("嗯", session), ["嗯，先歇一下，不急著打起精神。"])
         self.assertEqual(chat_engine.make_reply("不要", "no-topic"), ["好，不勉強，這個先放一邊。"])
+
+    def test_massage_offer_is_not_repeated_even_after_history_rolls_over(self) -> None:
+        session = "massage-no-repeat"
+        self.assertEqual(chat_engine.make_reply("好累", session), ["需要幫你捶捶背嗎？"])
+        for text in ("好啊", "嗯", "謝謝", "嗨", "週末看電影"):
+            self.assertNotRegex(chat_engine.make_reply(text, session)[0], r"[？?]")
+        self.assertEqual(len(chat_engine._MEMORY[session].messages), 6)
+        self.assertTrue(chat_engine._MEMORY[session].massage_offer_made)
+        self.assertEqual(chat_engine.make_reply("我好累", session), ["今天已經夠用力了，先歇一下，不急著打起精神。"])
+        self._mock_success("先歇一下，不用急著打起精神。")
+        with self._enabled_ai_environment():
+            chat_engine.make_reply("好累", session)
+        messages = json.loads(self.provider.call_args.args[0].data)["messages"]
+        self.assertIn("back-pat offer already appeared", messages[0]["content"])
+        chat_engine.clear_session(session)
+        self.assertEqual(chat_engine.make_reply("好累", session), ["需要幫你捶捶背嗎？"])
+
+    def test_fatigue_does_not_add_question_after_previous_ai_question(self) -> None:
+        self._mock_success("要我問一個小問題嗎？")
+        with self._enabled_ai_environment():
+            chat_engine.make_reply("問我一個小問題", "recent-question")
+        reply = chat_engine.make_reply("好累", "recent-question")[0]
+        self.assertIn("先歇一下", reply)
+        self.assertNotRegex(reply, r"[？?]")
 
     def test_fallback_topics_are_warm_varied_and_never_force_menu(self) -> None:
         cases = {
@@ -292,8 +316,66 @@ class ChatEngineTests(unittest.TestCase):
             self.assertIn(topic, reply)
             for forbidden in ("作品還是日常", "想聊作品或日常", "選單", "輸入 0", chat_engine.IDENTITY_DISCLOSURE):
                 self.assertNotIn(forbidden, reply)
+            self.assertNotRegex(reply, r"[？?]")
             replies.append(reply)
         self.assertEqual(len(replies), len(set(replies)))
+        self.provider.assert_not_called()
+
+    def test_low_question_fallback_multi_turns_default_to_statements(self) -> None:
+        turns = ("嗨", "嗨", "在幹嘛", "買咖啡還是奶茶", "嗯", "週末看電影", "好啊", "今天看了別人的展覽", "好無聊", "好啊")
+        for text in turns:
+            with self.subTest(text=text):
+                reply = chat_engine.make_reply(text, "low-question-chat")[0]
+                self.assertNotRegex(reply, r"[？?]")
+                for phrase in ("你呢", "你覺得", "今天怎麼樣", "想聊什麼"):
+                    self.assertNotIn(phrase, reply)
+        self.assertEqual(len(chat_engine._MEMORY["low-question-chat"].messages), 6)
+        self.provider.assert_not_called()
+
+    def test_provider_receives_low_question_prompt_without_deleting_valid_questions(self) -> None:
+        self._mock_success("你希望我問哪一類問題？")
+        with self._enabled_ai_environment():
+            self.assertEqual(chat_engine.make_reply("你可以問我一個問題", "invited-question"), ["你希望我問哪一類問題？"])
+        context = json.loads(self.provider.call_args.args[0].data)["messages"][0]["content"]
+        for phrase in ("先回答／接話，預設不用問句", "短問一個", "不把「嗯」「好啊」等簡短確認當成新的訪談", "不是硬性配額", "不承諾永遠不問", "不再追問力道"):
+            self.assertIn(phrase, context)
+        with patch.object(chat_engine, "SYSTEM_PROMPT_FILE", Path("/missing-lowquestion-system-prompt")):
+            self.assertIn("default to statements", chat_engine._load_system_context())
+
+    def test_ticket_context_is_third_party_activity_and_reaches_mocked_ai(self) -> None:
+        session = "ticket-context"
+        invitation = "文化局 2026 高雄漾藝術博覽會，11/13–15 駁二 P3；核准電子邀請免費入場並可再帶一位親友。"
+        with patch.object(chat_engine._LOGGER, "info") as logger:
+            chat_engine.remember_ticket_context(session, "門票", invitation)
+            logger.assert_not_called()
+        self._mock_success("這是分享文化局活動，不是 Christy P 的作品展；沒有本人展出或到場的核准資訊。")
+        with self._enabled_ai_environment(), self.assertLogs(chat_engine._LOGGER, level="INFO") as logs:
+            reply = chat_engine.make_reply("所以她也有展出嗎？", session)[0]
+        self.assertIn("不是 Christy P 的作品展", reply)
+        self.assertEqual([r.getMessage() for r in logs.records], ["ai_chat status=success"])
+        self.assertNotIn(invitation, str(logs.output))
+        messages = json.loads(self.provider.call_args.args[0].data)["messages"]
+        self.assertEqual(messages[1], {"role": "user", "content": "文化局活動邀請函（非 Christy P 作品展）：門票"})
+        self.assertEqual(messages[2], {"role": "assistant", "content": invitation})
+        self.assertNotIn("Christy P 圖文介紹：", messages[1]["content"])
+        for phrase in ("該展不是她的作品展", "不能聲稱本人有展出或到場", "可免費入場", "再帶一位親友", "固定路由", "https://zingy-eclair-bb1011.netlify.app/", "No other email or contact details are user-approved", "Christy P's own exhibition dates"):
+            self.assertIn(phrase, messages[0]["content"])
+        self.assertEqual(chat_engine.make_reply("Christy P 接下來有展覽嗎？", session), [chat_engine._EXHIBIT_MESSAGE])
+
+    def test_ticket_context_does_not_scope_followups_to_artist_and_is_bounded(self) -> None:
+        session = "ticket-followup"
+        chat_engine.make_reply("Christy P 的周邊有賣嗎", session)
+        chat_engine.remember_ticket_context(session, "門票", "核准第三方活動邀請")
+        self.assertFalse(chat_engine._prior_user_refers_to_artist(chat_engine._MEMORY[session]))
+        chat_engine.make_reply("嗯", session)
+        self.assertEqual(chat_engine.make_reply("多少錢", session), [chat_engine.GENERIC_FALLBACK])
+        for _ in range(5):
+            chat_engine.remember_ticket_context(session, "門票" * 1000, "邀請" * 1000)
+        self.assertEqual(len(chat_engine._MEMORY[session].messages), 6)
+        self.assertTrue(all(len(m["content"]) <= 800 for m in chat_engine._MEMORY[session].messages))
+        self.assertNotIn("separate-ticket-session", chat_engine._MEMORY)
+        chat_engine.remember_gallery_context("gallery-unchanged", "1", "核准藝術家介紹")
+        self.assertEqual(chat_engine._MEMORY["gallery-unchanged"].messages[0]["content"], "Christy P 圖文介紹：1")
         self.provider.assert_not_called()
 
     def test_short_fallbacks_follow_previous_topic(self) -> None:
@@ -316,6 +398,8 @@ class ChatEngineTests(unittest.TestCase):
         for reply in (first, second):
             self.assertNotIn("選單", reply)
             self.assertNotIn("作品", reply)
+            self.assertNotIn("聽到了", reply)
+            self.assertNotRegex(reply, r"[？?]")
         self.assertFalse(chat_engine.ai_configured())
         self.assertEqual(chat_engine.mode_descriptor(), "deterministic_rules_only")
         self.provider.assert_not_called()
