@@ -18,6 +18,7 @@ from pathlib import Path
 from flask import Flask, abort, request
 import chat_engine
 import gallery_cards
+import ticket_reply
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -150,6 +151,12 @@ def reply_to_text(reply_token: str, text: str, source: dict) -> None:
     if chat_engine.is_welcome_request(text):
         reply_to_follow(reply_token)
         return
+    ticket_objects = ticket_reply.resolve_text(text)
+    if ticket_objects:
+        logger.info("LINE ticket invitation prepared: images=1 messages=2")
+        reply_with_message_objects(reply_token, ticket_objects)
+        chat_engine.remember_gallery_context(session_key, text, ticket_reply.THANK_YOU_MESSAGE)
+        return
     objects = gallery_cards.resolve_text(text, session_key)
     if objects:
         reply_to_gallery(reply_token, objects, session_key, text)
@@ -281,6 +288,8 @@ def status():
         "gallery_trigger_version": "natural_requests_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "welcome_image_version": WELCOME_IMAGE_VERSION,
+        "ticket_reply_version": ticket_reply.VERSION,
+        "ticket_reply_enabled": TEXT_CHAT_ENABLED,
         "scheduled_broadcast": False,
         **gallery_cards.content_status(),
     }, 200

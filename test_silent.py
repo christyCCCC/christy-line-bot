@@ -93,6 +93,8 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "gallery_trigger_version": "natural_requests_v2",
                 "welcome_test_command": "測試歡迎",
                 "welcome_image_version": "cover_20261108",
+                "ticket_reply_version": "yak_invitation_20261110",
+                "ticket_reply_enabled": True,
                 "scheduled_broadcast": False,
                 "cards_version": "artist_works_zh_v2",
                 "content_language": "zh-TW",
