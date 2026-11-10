@@ -19,6 +19,7 @@ from flask import Flask, abort, request
 import chat_engine
 import gallery_cards
 import ticket_reply
+import tour_registration
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -150,6 +151,12 @@ def reply_to_text(reply_token: str, text: str, source: dict) -> None:
     session_key = anonymous_session_key(source)
     if chat_engine.is_welcome_request(text):
         reply_to_follow(reply_token)
+        return
+    private_chat = source.get("type") not in {"group", "room"} and not (source.get("groupId") or source.get("roomId"))
+    tour_objects = tour_registration.resolve_text(text, session_key, private_chat=private_chat)
+    if tour_objects:
+        logger.info("LINE private tour reply prepared: messages=%s", len(tour_objects))
+        reply_with_message_objects(reply_token, tour_objects)
         return
     ticket_objects = ticket_reply.resolve_text(text)
     if ticket_objects:
@@ -290,6 +297,8 @@ def status():
         "welcome_image_version": WELCOME_IMAGE_VERSION,
         "ticket_reply_version": ticket_reply.VERSION,
         "ticket_reply_enabled": TEXT_CHAT_ENABLED,
+        "tour_registration_version": tour_registration.VERSION,
+        "tour_registration_enabled": TEXT_CHAT_ENABLED,
         "scheduled_broadcast": False,
         **gallery_cards.content_status(),
     }, 200

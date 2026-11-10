@@ -95,6 +95,8 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "welcome_image_version": "cover_20261108",
                 "ticket_reply_version": "yak_invitation_20261110_user_copy_v2",
                 "ticket_reply_enabled": True,
+                "tour_registration_version": "private_tour_registration_20261110",
+                "tour_registration_enabled": True,
                 "scheduled_broadcast": False,
                 "cards_version": "artist_works_zh_v2",
                 "content_language": "zh-TW",
