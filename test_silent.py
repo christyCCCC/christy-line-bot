@@ -89,7 +89,7 @@ class WelcomeAndAboutWebhookTests(unittest.TestCase):
                 "ordinary_messages_enabled": True,
                 "chat_mode": "rules_only",
                 "ai_configured": False,
-                "chat_style": "responsive_low_questions_v3",
+                "chat_style": "vivid_playful_v4",
                 "gallery_trigger_version": "natural_requests_v2",
                 "welcome_test_command": "測試歡迎",
                 "welcome_image_version": "cover_20261108",

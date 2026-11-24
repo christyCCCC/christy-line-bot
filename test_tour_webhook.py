@@ -133,7 +133,7 @@ class TourWebhookTests(unittest.TestCase):
         status = self.client.get('/status').json
         self.assertEqual(status['tour_registration_version'], tour.VERSION)
         self.assertTrue(status['tour_registration_enabled'])
-        self.assertEqual(status['chat_style'], 'responsive_low_questions_v3')
+        self.assertEqual(status['chat_style'], 'vivid_playful_v4')
         self.assertEqual(status['ticket_reply_version'], 'yak_invitation_20261110_user_copy_v2')
         self.assertFalse(status['scheduled_broadcast'])
 

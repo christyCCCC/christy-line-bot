@@ -291,7 +291,7 @@ def status():
         "ordinary_messages_enabled": TEXT_CHAT_ENABLED,
         "chat_mode": ("ai_with_rules" if chat_engine.ai_configured() else "rules_only") if TEXT_CHAT_ENABLED else "off",
         "ai_configured": chat_engine.ai_configured(),
-        "chat_style": "responsive_low_questions_v3",
+        "chat_style": "vivid_playful_v4",
         "gallery_trigger_version": "natural_requests_v2",
         "welcome_test_command": "測試歡迎" if TEXT_CHAT_ENABLED else None,
         "welcome_image_version": WELCOME_IMAGE_VERSION,

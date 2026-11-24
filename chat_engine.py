@@ -32,7 +32,7 @@ MEMORY_TTL_SECONDS = 30 * 60
 MEMORY_MAX_MESSAGES = 6
 _MEMORY_TEXT_LIMIT = 800
 
-CHAT_STYLE = "responsive_low_questions_v3"
+CHAT_STYLE = "vivid_playful_v4"
 IDENTITY_DISCLOSURE = "這裡是 Christy P 官方 LINE 的自動回覆助手，可以一起聊作品與日常。"
 GENERIC_FALLBACK = "這句我暫時沒接準，你可以換個說法，或接著說下去。"
 CLEAR_CONFIRMATION = "已清除本助手的暫存上下文；這不會刪除 LINE 或 AI 供應商的紀錄。"
@@ -450,11 +450,19 @@ def _call_openai(user_text: str, state: Optional[_SessionState]) -> Optional[str
     base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").strip()
     base_url = base_url.rstrip("/") or "https://api.openai.com/v1"
     model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    try:
+        temperature = float(os.environ.get("OPENAI_TEMPERATURE", "0.9"))
+    except ValueError:
+        temperature = 0.9
+    if not 0.0 <= temperature <= 1.3:
+        temperature = 0.9
     payload = {
         "model": model,
         "messages": _provider_messages(state, user_text),
         "max_tokens": 350,
-        "temperature": 0.7,
+        "temperature": temperature,
+        "presence_penalty": 0.4,
+        "frequency_penalty": 0.3,
     }
     request = urllib.request.Request(
         f"{base_url}/chat/completions",
